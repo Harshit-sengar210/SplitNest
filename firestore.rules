@@ -1,0 +1,52 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+  
+    // Rules for the users collection
+    match /users/{userId} {
+      // Allow any authenticated user to read user profile information
+      // (This is required so members can see other members' display names/profiles in the group)
+      allow read: if request.auth != null;
+      
+      // Allow writing only if the user is authenticated and is writing their own document
+      allow write: if request.auth != null && request.auth.uid == userId;
+
+      match /ledger/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    // Rules for the nests collection
+    match /nests/{nestId} {
+      allow read, write: if request.auth != null;
+      
+      match /expenses/{document=**} {
+        allow read, write: if request.auth != null;
+      }
+      
+      match /Cycle/{document=**} {
+        allow read, write: if request.auth != null;
+      }
+      
+      match /timeline/{document=**} {
+        allow read, write: if request.auth != null;
+      }
+      
+      match /Chats/{document=**} {
+        allow read, write: if request.auth != null;
+      }
+      
+      match /settlements/{settlementId} {
+        allow read: if request.auth != null;
+        allow create, update: if request.auth != null && request.resource.data.receiverId == request.auth.uid;
+        allow delete: if request.auth != null && resource.data.receiverId == request.auth.uid;
+      }
+    }
+
+    // Default fallback: Deny all other reads/writes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
