@@ -433,7 +433,7 @@ class _CycleScreenState extends ConsumerState<CycleScreen>
                       _buildGridItem(
                         title: 'Settled',
                         value: '₹${NumberFormat('#,##,###').format(stats.totalSettled)}',
-                        asset: 'assets/images/3d_wallet.png',
+                        asset: 'assets/images/3d_premium_nest.png',
                         color: const Color(0xFF10B981),
                         width: itemWidth,
                         isDark: isDark,

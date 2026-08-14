@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../nests/presentation/providers/nest_provider.dart';
+import '../../domain/repositories/invite_repository.dart';
 
 class GroupsListScreen extends ConsumerWidget {
   const GroupsListScreen({super.key});
@@ -88,7 +91,7 @@ class GroupsListScreen extends ConsumerWidget {
                   ),
                   // + button
                   GestureDetector(
-                    onTap: () => context.push('/groups/create'),
+                    onTap: () => _showAddMenu(context, ref),
                     child: Container(
                       width: 44,
                       height: 44,
@@ -309,6 +312,270 @@ class GroupsListScreen extends ConsumerWidget {
       ),
     );
   }
+
+  void _showAddMenu(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).brightness == Brightness.dark 
+              ? const Color(0xFF17120D) 
+              : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(height: 20),
+            Text('Add a Nest',
+                style: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark 
+                        ? Colors.white 
+                        : const Color(0xFF1A1A2E), 
+                    fontSize: 18, 
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            GestureDetector(
+              onTap: () {
+                Navigator.pop(sheetContext);
+                context.push('/groups/create');
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C5CFF).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEBE6FF),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.add_home_rounded, color: Color(0xFF7C5CFF), size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Create a Nest',
+                              style: TextStyle(
+                                  color: Theme.of(context).brightness == Brightness.dark 
+                                      ? Colors.white 
+                                      : const Color(0xFF1A1A2E),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16)),
+                          const SizedBox(height: 4),
+                          const Text('Start a new shared expense group',
+                              style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showJoinNestSheet(context, ref);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C5CFF).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEBE6FF),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.group_add_rounded, color: Color(0xFF7C5CFF), size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Join a Nest',
+                              style: TextStyle(
+                                  color: Theme.of(context).brightness == Brightness.dark 
+                                      ? Colors.white 
+                                      : const Color(0xFF1A1A2E),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16)),
+                          const SizedBox(height: 4),
+                          const Text('Enter invite code to join a group',
+                              style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showJoinNestSheet(BuildContext context, WidgetRef ref) {
+    final codeController = TextEditingController();
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark 
+                ? const Color(0xFF17120D) 
+                : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(28, 20, 28, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5E7EB),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Join Existing Nest',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Theme.of(context).brightness == Brightness.dark 
+                      ? Colors.white 
+                      : const Color(0xFF1A1A1A),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Enter the invite code shared by your friend to access the shared expenses.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  color: const Color(0xFF6B7280),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: codeController,
+                autofocus: true,
+                textAlign: TextAlign.center,
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 8,
+                decoration: InputDecoration(
+                  hintText: 'e.g. FLAT402',
+                  hintStyle: GoogleFonts.plusJakartaSans(
+                    color: const Color(0xFF9CA3AF),
+                    fontWeight: FontWeight.bold,
+                  ),
+                  counterText: '',
+                  filled: true,
+                  fillColor: const Color(0xFFF9FAFB),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Color(0xFF7C5CFF), width: 2),
+                  ),
+                ),
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2.0,
+                  color: const Color(0xFF1A1A1A),
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () async {
+                  final code = codeController.text.trim();
+                  if (code.isNotEmpty) {
+                    try {
+                      await ref.read(inviteRepositoryProvider).joinNestFromInvite(code);
+                      if (sheetContext.mounted) {
+                        Navigator.pop(sheetContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Joined Nest "$code" successfully!'),
+                            backgroundColor: const Color(0xFF10B981),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (sheetContext.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(e.toString().replaceAll('Exception: ', '')),
+                            backgroundColor: const Color(0xFFEF4444),
+                          ),
+                        );
+                      }
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C5CFF),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                child: Text(
+                  'Join Nest',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Reusable card widget ─────────────────────────────────────────────────────
@@ -375,24 +642,10 @@ class _GroupCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              // 3D Category icon
+              // 3D Category icon (supports asset, URL and base64)
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.asset(
-                  iconAsset,
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stack) => Container(
-                    width: 56,
-                    height: 56,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFEAE6F8),
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                    ),
-                    child: const Icon(Icons.group_rounded, color: Color(0xFF7C5CBF), size: 28),
-                  ),
-                ),
+                child: _buildGroupIcon(iconAsset),
               ),
               const SizedBox(width: 12),
 
@@ -475,6 +728,58 @@ class _GroupCard extends StatelessWidget {
       ),
     );
   }
+
+  /// Builds the correct image widget based on whether `iconAsset` is:
+  ///  - a network URL (http/https)
+  ///  - a base64 data URI (data:image/...)
+  ///  - a local asset path (assets/...)
+  Widget _buildGroupIcon(String src) {
+    const size = 56.0;
+    final fallback = Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Color(0xFFEAE6F8),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+      ),
+      child: const Icon(Icons.group_rounded, color: Color(0xFF7C5CBF), size: 28),
+    );
+
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      return Image.network(
+        src,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => fallback,
+      );
+    }
+
+    if (src.startsWith('data:image')) {
+      try {
+        final base64Str = src.contains(',') ? src.split(',')[1] : src;
+        return Image.memory(
+          base64Decode(base64Str),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => fallback,
+        );
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    // Local asset
+    return Image.asset(
+      src,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => fallback,
+    );
+  }
+
 }
 
 // ── Floating bubble decoration ───────────────────────────────────────────────

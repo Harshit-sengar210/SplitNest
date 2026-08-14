@@ -5,12 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../../../../core/providers/database_provider.dart';
-import '../../../../core/utils/mock_database.dart';
+
 import '../../../groups/presentation/providers/groups_provider.dart';
 import '../../../ledger/presentation/providers/ledger_provider.dart';
 import 'package:splitnest/features/expenses/domain/models/expense.dart';
 import 'package:splitnest/features/groups/domain/models/group.dart';
+import '../providers/analytics_provider.dart';
 
 class CalendarEvent {
   final String id;
@@ -22,6 +22,7 @@ class CalendarEvent {
   type; // 'Expense', 'Settlement', 'Pending', 'Payment', 'CycleStart', 'CycleEnd'
   final Color color;
   final String routePath;
+  final String category;
 
   CalendarEvent({
     required this.id,
@@ -32,6 +33,7 @@ class CalendarEvent {
     required this.type,
     required this.color,
     required this.routePath,
+    this.category = '',
   });
 }
 
@@ -81,201 +83,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Watch DB change provider and ledger provider for reactivity
-    ref.watch(databaseChangeProvider);
-    final ledgerTransactionsAsync = ref.watch(ledgerTransactionsProvider);
-    final ledgerTransactions = ledgerTransactionsAsync.value ?? [];
     final groupsState = ref.watch(groupsListProvider);
-
-    final db = MockDatabase();
-
-    // Helper to get group name
-    String getGroupName(String groupId) {
-      try {
-        return db.groups.firstWhere((g) => g.id == groupId).name;
-      } catch (_) {
-        return 'Group';
-      }
-    }
-
-    // Helper to get member name
-    String getMemberName(String groupId, String userId) {
-      if (userId == 'user_me') return 'You';
-      try {
-        final group = db.groups.firstWhere((g) => g.id == groupId);
-        return group.members.firstWhere((m) => m.id == userId).name;
-      } catch (_) {
-        return 'Someone';
-      }
-    }
-
-    // Compile all calendar events
-    final List<CalendarEvent> allEvents = [];
-
-    // 1. Group Expenses (Purple)
-    for (final exp in db.expenses) {
-      final groupName = getGroupName(exp.groupId);
-      final paidByName = getMemberName(exp.groupId, exp.paidByUserId);
-      final isMyExpense = exp.paidByUserId == 'user_me';
-      final mySplit = exp.splits.where((s) => s.userId == 'user_me').toList();
-      final isInvolved = isMyExpense || mySplit.isNotEmpty;
-      if (!isInvolved) continue;
-
-      String desc;
-      double displayAmt;
-      if (isMyExpense && mySplit.isEmpty) {
-        desc = 'Paid fully on behalf of $groupName';
-        displayAmt = exp.amount;
-      } else if (isMyExpense) {
-        final myShare = mySplit.first.amount;
-        displayAmt = exp.amount - myShare;
-        desc =
-            'You paid ₹${exp.amount.toStringAsFixed(0)} for "${exp.title}" (Your share: ₹${myShare.toStringAsFixed(0)})';
-      } else {
-        displayAmt = mySplit.first.amount;
-        desc =
-            '$paidByName paid for "${exp.title}" in $groupName — your share: ₹${displayAmt.toStringAsFixed(0)}';
-      }
-
-      allEvents.add(
-        CalendarEvent(
-          id: 'expense_${exp.id}',
-          title: exp.title,
-          description: desc,
-          amount: displayAmt,
-          dateTime: exp.date,
-          type: 'Expense',
-          color: const Color(0xFF7B61FF), // Purple
-          routePath:
-              '/expenses/detail/${exp.id}?title=${Uri.encodeComponent(exp.title)}&amount=₹${exp.amount.toStringAsFixed(0)}',
-        ),
-      );
-    }
-
-    // 2. Group Settlements (Green)
-    for (final set in db.settlements) {
-      final iAmPayer = set.payerId == 'user_me';
-      final iAmReceiver = set.receiverId == 'user_me';
-      if (!iAmPayer && !iAmReceiver) continue;
-
-      final groupName = getGroupName(set.groupId);
-      final otherName = iAmPayer
-          ? getMemberName(set.groupId, set.receiverId)
-          : getMemberName(set.groupId, set.payerId);
-      final title = iAmPayer ? 'Settlement Paid' : 'Settlement Received';
-      final desc = iAmPayer
-          ? 'You settled with $otherName in $groupName'
-          : '$otherName settled with you in $groupName';
-
-      allEvents.add(
-        CalendarEvent(
-          id: 'settlement_${set.id}',
-          title: title,
-          description: desc,
-          amount: set.amount,
-          dateTime: set.createdAt,
-          type: 'Settlement',
-          color: const Color(0xFF10B981), // Green
-          routePath:
-              '/settlement/detail/${set.id}?title=${Uri.encodeComponent(title)}&amount=₹${set.amount.toStringAsFixed(0)}',
-        ),
-      );
-    }
-
-    // 3. Ledger Transactions: Pending (Red) and Payment (Blue)
-    for (final tx in ledgerTransactions) {
-      final desc = tx.type == 'lend'
-          ? 'You gave money to ${tx.personName ?? 'Someone'}'
-          : tx.type == 'borrow'
-          ? 'Borrowed money from ${tx.personName ?? 'Someone'}'
-          : tx.type == 'income'
-          ? 'Received income: ${tx.title}'
-          : 'Expense: ${tx.title}';
-
-      final isPending = tx.status == 'pending';
-
-      allEvents.add(
-        CalendarEvent(
-          id: 'ledger_${tx.transactionId}',
-          title: tx.title,
-          description: '$desc${tx.description.isNotEmpty ? ' (${tx.description})' : ''}',
-          amount: tx.amount,
-          dateTime: tx.date,
-          type: isPending ? 'Pending' : 'Payment',
-          color: isPending
-              ? const Color(0xFFEF4444)
-              : const Color(0xFF3B82F6), // Red or Blue
-          routePath: '/personal-ledger/detail/${tx.transactionId}',
-        ),
-      );
-    }
-
-    // 4. Cycle Start & End Dates
-    for (final group in groupsState.groups) {
-      final statsAsync = ref.watch(cycleStatsProvider(group.id));
-      final stats = statsAsync.value;
-      if (stats != null) {
-        allEvents.add(
-          CalendarEvent(
-            id: 'cyclestart_current_${group.id}',
-            title: '${group.name} Cycle Start',
-            description:
-                'New billing cycle started today (Date: ${DateFormat('dd MMM').format(stats.cycleStart)})',
-            amount: 0.0,
-            dateTime: stats.cycleStart,
-            type: 'CycleStart',
-            color: const Color(0xFF8B5CF6), // Indigo
-            routePath: '/groups/${group.id}',
-          ),
-        );
-
-        allEvents.add(
-          CalendarEvent(
-            id: 'cycleend_current_${group.id}',
-            title: '${group.name} Cycle End',
-            description:
-                'Current billing cycle rolls over today (Date: ${DateFormat('dd MMM').format(stats.cycleEnd)})',
-            amount: 0.0,
-            dateTime: stats.cycleEnd,
-            type: 'CycleEnd',
-            color: const Color(0xFFD946EF), // Fuchsia/Pink
-            routePath: '/groups/${group.id}',
-          ),
-        );
-      }
-
-      final historyAsync = ref.watch(cycleHistoryProvider(group.id));
-      final history = historyAsync.value ?? [];
-      for (final report in history) {
-        allEvents.add(
-          CalendarEvent(
-            id: 'cyclestart_hist_${report.id}',
-            title: '${group.name} Cycle Start (Archived)',
-            description:
-                'Archived billing cycle started on ${DateFormat('dd MMM yyyy').format(report.cycleStart)}',
-            amount: 0.0,
-            dateTime: report.cycleStart,
-            type: 'CycleStart',
-            color: const Color(0xFF8B5CF6),
-            routePath: '/groups/${group.id}',
-          ),
-        );
-
-        allEvents.add(
-          CalendarEvent(
-            id: 'cycleend_hist_${report.id}',
-            title: '${group.name} Cycle End (Archived)',
-            description:
-                'Archived billing cycle rolled over on ${DateFormat('dd MMM yyyy').format(report.cycleEnd)}',
-            amount: 0.0,
-            dateTime: report.cycleEnd,
-            type: 'CycleEnd',
-            color: const Color(0xFFD946EF),
-            routePath: '/groups/${group.id}',
-          ),
-        );
-      }
-    }
+    final allEvents = ref.watch(calendarEventsProvider);
 
     // Group all events by date (ignoring time)
     Map<String, List<CalendarEvent>> eventsByDate = {};
@@ -311,7 +120,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
                   _buildOverviewTab(eventsByDate),
                   _buildExpensesTab(monthEvents),
                   _buildSettlementsTab(monthEvents),
-                  _buildAnalyticsTab(allEvents, groupsState.groups, db),
+                  _buildAnalyticsTab(allEvents, groupsState.groups),
                 ],
               ),
             ),
@@ -380,7 +189,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
   Widget _buildTabBar() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -394,6 +203,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
       ),
       child: TabBar(
         controller: _tabController,
+        isScrollable: true,
+        tabAlignment: TabAlignment.start,
+        indicatorPadding: const EdgeInsets.symmetric(
+          vertical: 2,
+          horizontal: 0,
+        ),
+        labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+        indicatorSize: TabBarIndicatorSize.tab,
         indicator: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
           gradient: const LinearGradient(
@@ -402,19 +219,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF8B5CF6).withOpacity(0.35),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
         labelColor: Colors.white,
         unselectedLabelColor: const Color(0xFF8C8CA1),
         labelStyle: GoogleFonts.plusJakartaSans(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w800,
         ),
         unselectedLabelStyle: GoogleFonts.plusJakartaSans(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
         tabs: const [
@@ -790,13 +607,27 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
             iconData = Icons.receipt_long_rounded;
             typeLabel = 'Group Expense';
             break;
+          case 'PersonalExpense':
+            iconData = Icons.receipt_rounded;
+            typeLabel = 'Personal Expense';
+            break;
           case 'Settlement':
             iconData = Icons.handshake_rounded;
-            typeLabel = 'Settlement';
+            typeLabel = 'Group Settlement';
             break;
+          case 'PersonalSettlement':
+            iconData = Icons.currency_exchange_rounded;
+            typeLabel = 'Personal Settlement';
+            break;
+          case 'PendingExpense':
+          case 'PendingSettlement':
           case 'Pending':
             iconData = Icons.hourglass_empty_rounded;
-            typeLabel = 'Pending Payment';
+            typeLabel = 'Pending Transaction';
+            break;
+          case 'Income':
+            iconData = Icons.savings_rounded;
+            typeLabel = 'Income';
             break;
           case 'Payment':
             iconData = Icons.check_circle_rounded;
@@ -822,51 +653,54 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0xFFEBE9F5)),
           ),
-          child: ListTile(
-            onTap: () => context.push(ev.routePath),
-            leading: CircleAvatar(
-              backgroundColor: ev.color.withOpacity(0.08),
-              child: Icon(iconData, color: ev.color, size: 18),
-            ),
-            title: Text(
-              ev.title,
-              style: GoogleFonts.outfit(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF1A1A3F),
+          child: Material(
+            color: Colors.transparent,
+            child: ListTile(
+              onTap: () => context.push(ev.routePath),
+              leading: CircleAvatar(
+                backgroundColor: ev.color.withOpacity(0.08),
+                child: Icon(iconData, color: ev.color, size: 18),
               ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  typeLabel,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: ev.color,
-                  ),
+              title: Text(
+                ev.title,
+                style: GoogleFonts.outfit(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF1A1A3F),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  ev.description,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: const Color(0xFF6B6B8A),
-                  ),
-                ),
-              ],
-            ),
-            trailing: ev.amount > 0
-                ? Text(
-                    '₹${ev.amount.toStringAsFixed(0)}',
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    typeLabel,
                     style: GoogleFonts.plusJakartaSans(
-                      fontSize: 14,
+                      fontSize: 10,
                       fontWeight: FontWeight.w800,
                       color: ev.color,
                     ),
-                  )
-                : null,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    ev.description,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: const Color(0xFF6B6B8A),
+                    ),
+                  ),
+                ],
+              ),
+              trailing: ev.amount > 0
+                  ? Text(
+                      '₹${ev.amount.toStringAsFixed(0)}',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: ev.color,
+                      ),
+                    )
+                  : null,
+            ),
           ),
         );
       },
@@ -877,29 +711,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
   // 2. EXPENSES TAB (Expense category breakdown & list)
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildExpensesTab(List<CalendarEvent> monthEvents) {
-    final expenses = monthEvents.where((e) => e.type == 'Expense').toList();
+    final expenses = monthEvents.where((e) => e.type == 'Expense' || e.type == 'PersonalExpense' || e.type == 'PendingExpense').toList();
     final double totalExpenses = expenses.fold(0.0, (sum, e) => sum + e.amount);
 
     // Group expenses by category
     Map<String, double> categoriesMap = {};
     for (final exp in expenses) {
-      // Find original expense to extract category
-      final db = MockDatabase();
-      final orig = db.expenses.firstWhere(
-        (o) => 'expense_${o.id}' == exp.id,
-        orElse: () => Expense(
-          id: '',
-          title: '',
-          amount: 0,
-          category: 'Others',
-          groupId: '',
-          paidByUserId: '',
-          splits: [],
-          date: DateTime(1970),
-          splitMethod: '',
-        ),
-      );
-      final cat = orig.category.isNotEmpty ? orig.category : 'Others';
+      final cat = exp.category.isNotEmpty ? exp.category : 'Others';
       categoriesMap[cat] = (categoriesMap[cat] ?? 0.0) + exp.amount;
     }
 
@@ -983,7 +801,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
                           ClipRRect(
                             borderRadius: BorderRadius.circular(10),
                             child: LinearProgressIndicator(
-                              value: pct,
+                              value: pct.clamp(0.0, 1.0),
                               minHeight: 8,
                               backgroundColor: const Color(0xFFF3F0FF),
                               color: const Color(0xFF7B61FF),
@@ -1024,37 +842,40 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: const Color(0xFFEBE9F5)),
                     ),
-                    child: ListTile(
-                      onTap: () => context.push(exp.routePath),
-                      leading: CircleAvatar(
-                        backgroundColor: const Color(0xFFF3F0FF),
-                        child: const Icon(
-                          Icons.receipt_long_rounded,
-                          color: Color(0xFF7B61FF),
-                          size: 18,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        onTap: () => context.push(exp.routePath),
+                        leading: CircleAvatar(
+                          backgroundColor: const Color(0xFFF3F0FF),
+                          child: const Icon(
+                            Icons.receipt_long_rounded,
+                            color: Color(0xFF7B61FF),
+                            size: 18,
+                          ),
                         ),
-                      ),
-                      title: Text(
-                        exp.title,
-                        style: GoogleFonts.outfit(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF1A1A3F),
+                        title: Text(
+                          exp.title,
+                          style: GoogleFonts.outfit(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1A1A3F),
+                          ),
                         ),
-                      ),
-                      subtitle: Text(
-                        DateFormat('dd MMM yyyy').format(exp.dateTime),
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          color: const Color(0xFF8C8CA1),
+                        subtitle: Text(
+                          DateFormat('dd MMM yyyy').format(exp.dateTime),
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: const Color(0xFF8C8CA1),
+                          ),
                         ),
-                      ),
-                      trailing: Text(
-                        '₹${exp.amount.toStringAsFixed(0)}',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF7B61FF),
+                        trailing: Text(
+                          '₹${exp.amount.toStringAsFixed(0)}',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF7B61FF),
+                          ),
                         ),
                       ),
                     ),
@@ -1073,7 +894,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildSettlementsTab(List<CalendarEvent> monthEvents) {
     final settlements = monthEvents
-        .where((e) => e.type == 'Settlement')
+        .where((e) => e.type == 'Settlement' || e.type == 'PersonalSettlement' || e.type == 'PendingSettlement')
         .toList();
     final double totalSettlements = settlements.fold(
       0.0,
@@ -1127,37 +948,40 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: const Color(0xFFEBE9F5)),
                     ),
-                    child: ListTile(
-                      onTap: () => context.push(set.routePath),
-                      leading: CircleAvatar(
-                        backgroundColor: const Color(0xFFE8F5E9),
-                        child: const Icon(
-                          Icons.handshake_rounded,
-                          color: Color(0xFF10B981),
-                          size: 18,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        onTap: () => context.push(set.routePath),
+                        leading: CircleAvatar(
+                          backgroundColor: const Color(0xFFE8F5E9),
+                          child: const Icon(
+                            Icons.handshake_rounded,
+                            color: Color(0xFF10B981),
+                            size: 18,
+                          ),
                         ),
-                      ),
-                      title: Text(
-                        set.title,
-                        style: GoogleFonts.outfit(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF1A1A3F),
+                        title: Text(
+                          set.title,
+                          style: GoogleFonts.outfit(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1A1A3F),
+                          ),
                         ),
-                      ),
-                      subtitle: Text(
-                        set.description,
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          color: const Color(0xFF6B6B8A),
+                        subtitle: Text(
+                          set.description,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: const Color(0xFF6B6B8A),
+                          ),
                         ),
-                      ),
-                      trailing: Text(
-                        '₹${set.amount.toStringAsFixed(0)}',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF10B981),
+                        trailing: Text(
+                          '₹${set.amount.toStringAsFixed(0)}',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF10B981),
+                          ),
                         ),
                       ),
                     ),
@@ -1174,32 +998,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
   // ─────────────────────────────────────────────────────────────────────────────
   // 4. ANALYTICS TAB (Custom charts and trends)
   // ─────────────────────────────────────────────────────────────────────────────
-  Widget _buildAnalyticsTab(
-    List<CalendarEvent> allEvents,
-    List<Group> groups,
-    MockDatabase db,
-  ) {
+  Widget _buildAnalyticsTab(List<CalendarEvent> allEvents, List<Group> groups) {
     // 1. Calculate category statistics for Donut chart
-    final expenses = allEvents.where((e) => e.type == 'Expense').toList();
+    final expenses = allEvents.where((e) => e.type == 'Expense' || e.type == 'PersonalExpense' || e.type == 'PendingExpense').toList();
     final double totalExpenses = expenses.fold(0.0, (sum, e) => sum + e.amount);
 
     Map<String, double> categoryDistribution = {};
     for (final exp in expenses) {
-      final orig = db.expenses.firstWhere(
-        (o) => 'expense_${o.id}' == exp.id,
-        orElse: () => Expense(
-          id: '',
-          title: '',
-          amount: 0,
-          category: 'Others',
-          groupId: '',
-          paidByUserId: '',
-          splits: [],
-          date: DateTime(1970),
-          splitMethod: '',
-        ),
-      );
-      final cat = orig.category.isNotEmpty ? orig.category : 'Others';
+      final cat = exp.category.isNotEmpty ? exp.category : 'Others';
       categoryDistribution[cat] =
           (categoryDistribution[cat] ?? 0.0) + exp.amount;
     }
@@ -1255,7 +1061,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
       monthlySettled[i] = allEvents
           .where(
             (e) =>
-                e.type == 'Settlement' &&
+                (e.type == 'Settlement' || e.type == 'PersonalSettlement') &&
                 e.dateTime.year == monthDate.year &&
                 e.dateTime.month == monthDate.month,
           )
@@ -1265,7 +1071,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
       monthlyPending[i] = allEvents
           .where(
             (e) =>
-                e.type == 'Pending' &&
+                (e.type == 'Pending' || e.type == 'PendingExpense' || e.type == 'PendingSettlement') &&
                 e.dateTime.year == monthDate.year &&
                 e.dateTime.month == monthDate.month,
           )
@@ -1620,8 +1426,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
                     _buildEmptyState('No Nest groups active.')
                   else
                     ...groups.map((group) {
-                      final stats = db.getCycleStats(group.id);
-                      final pct = stats.totalExpenses > 0
+                      final stats = ref
+                          .watch(cycleStatsProvider(group.id))
+                          .value;
+                      final pct = (stats != null && stats.totalExpenses > 0)
                           ? (stats.totalSettled / stats.totalExpenses)
                           : 0.0;
                       return Padding(
@@ -1654,7 +1462,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
                               child: LinearProgressIndicator(
-                                value: pct,
+                                value: pct.clamp(0.0, 1.0),
                                 minHeight: 6,
                                 backgroundColor: const Color(0xFFF3F0FF),
                                 color: const Color(0xFF8B5CF6),
@@ -1662,7 +1470,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen>
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Bills: ₹${stats.totalExpenses.toStringAsFixed(0)} • Pending: ₹${stats.totalPending.toStringAsFixed(0)}',
+                              'Bills: ₹${(stats?.totalExpenses ?? 0).toStringAsFixed(0)} • Pending: ₹${(stats?.totalPending ?? 0).toStringAsFixed(0)}',
                               style: GoogleFonts.inter(
                                 fontSize: 10,
                                 color: const Color(0xFF8C8CA1),

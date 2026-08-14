@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/utils/validation_utils.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/animated_gradient_background.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -19,20 +20,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> with TickerProv
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  late AnimationController _floatController;
-  late Animation<double> _floatAnimation;
+
 
   @override
   void initState() {
     super.initState();
-    _floatController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat(reverse: true);
-
-    _floatAnimation = Tween<double>(begin: -1.0, end: 1.0).animate(
-      CurvedAnimation(parent: _floatController, curve: Curves.easeInOut),
-    );
   }
 
   @override
@@ -41,7 +33,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> with TickerProv
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _floatController.dispose();
     super.dispose();
   }
 
@@ -101,177 +92,178 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> with TickerProv
         child: Stack(
           children: [
             // Background Floating Shapes
-            _BackgroundShapes(floatAnimation: _floatAnimation),
+            const AnimatedGradientBackground(),
 
             // Main Content Area
             SafeArea(
-              child: Column(
-                children: [
-                  // Custom App Bar with back button
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                    child: Row(
-                      children: [
-                        GestureDetector(
-                          onTap: () => context.pop(),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.04),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                              border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.arrow_back_ios_new_rounded,
-                                size: 16,
-                                color: Color(0xFF1F2937),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Register Form Content
-                  Expanded(
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // 1. Header Title & Subtitle
-                            Text(
-                              'Create Account 🚀',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 32,
-                                fontWeight: FontWeight.w800,
-                                color: const Color(0xFF1F2937),
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Join SplitNest to start splitting expenses easily.',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                                color: const Color(0xFF6B7280),
-                                height: 1.4,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 36),
-
-                            // 2. Input Fields
-                            PremiumTextField(
-                              controller: _nameController,
-                              labelText: 'Full Name',
-                              hintText: 'John Doe',
-                              prefixIcon: Icons.person_rounded,
-                              iconColor: const Color(0xFF7B61FF), // Purple
-                              validator: ValidationUtils.validateDisplayName,
-                              enabled: !authState.isLoading,
-                            ),
-                            const SizedBox(height: 20),
-                            PremiumTextField(
-                              controller: _emailController,
-                              labelText: 'Email Address',
-                              hintText: 'name@example.com',
-                              prefixIcon: Icons.email_rounded,
-                              iconColor: const Color(0xFF6CA8FF), // Blue
-                              keyboardType: TextInputType.emailAddress,
-                              validator: ValidationUtils.validateEmail,
-                              enabled: !authState.isLoading,
-                            ),
-                            const SizedBox(height: 20),
-                            PremiumTextField(
-                              controller: _passwordController,
-                              labelText: 'Password',
-                              hintText: 'Min 6 characters',
-                              prefixIcon: Icons.lock_rounded,
-                              iconColor: const Color(0xFFA78BFA), // Lavender
-                              isPassword: true,
-                              validator: ValidationUtils.validatePassword,
-                              enabled: !authState.isLoading,
-                            ),
-                            const SizedBox(height: 20),
-                            PremiumTextField(
-                              controller: _confirmPasswordController,
-                              labelText: 'Confirm Password',
-                              hintText: 'Re-enter your password',
-                              prefixIcon: Icons.lock_clock_rounded,
-                              iconColor: const Color(0xFF10B981), // Green
-                              isPassword: true,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please confirm your password';
-                                }
-                                if (value != _passwordController.text) {
-                                  return 'Passwords do not match';
-                                }
-                                return null;
-                              },
-                              enabled: !authState.isLoading,
-                              textInputAction: TextInputAction.done,
-                              onFieldSubmitted: (_) => _onRegisterPressed(),
-                            ),
-                            const SizedBox(height: 36),
-
-                            // 3. Register Button
-                            PremiumButton(
-                              text: 'SIGN UP',
-                              isLoading: authState.isLoading,
-                              onPressed: _onRegisterPressed,
-                            ),
-                            const SizedBox(height: 32),
-
-                            // 4. Footer link to sign in
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'Already have an account? ',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    color: const Color(0xFF6B7280),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: authState.isLoading ? null : () => context.pop(),
-                                  child: Text(
-                                    'Sign In',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: const Color(0xFF7B61FF),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  children: [
+                    // Custom App Bar with back button
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                              child: Row(
+                                children: [
+                                  GestureDetector(
+                                    onTap: () => context.pop(),
+                                    child: Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.04),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
+                                        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                                      ),
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.arrow_back_ios_new_rounded,
+                                          size: 14,
+                                          color: Color(0xFF1F2937),
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                            const SizedBox(height: 24),
+
+                            // Register Form Content
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+                              child: Form(
+                                key: _formKey,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    // 1. Header Title & Subtitle
+                                    const SizedBox(height: 20),
+                                    Text(
+                                      'Create Account 🚀',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF1F2937),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Join SplitNest to start splitting expenses easily.',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: const Color(0xFF6B7280),
+                                        height: 1.3,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 20),
+
+                                    // 2. Input Fields
+                                    PremiumTextField(
+                                      controller: _nameController,
+                                      labelText: 'Full Name',
+                                      hintText: 'John Doe',
+                                      prefixIcon: Icons.person_rounded,
+                                      iconColor: const Color(0xFF7B61FF), // Purple
+                                      validator: ValidationUtils.validateDisplayName,
+                                      enabled: !authState.isLoading,
+                                    ),
+                                    const SizedBox(height: 14),
+                                    PremiumTextField(
+                                      controller: _emailController,
+                                      labelText: 'Email Address',
+                                      hintText: 'name@example.com',
+                                      prefixIcon: Icons.email_rounded,
+                                      iconColor: const Color(0xFF6CA8FF), // Blue
+                                      keyboardType: TextInputType.emailAddress,
+                                      validator: ValidationUtils.validateEmail,
+                                      enabled: !authState.isLoading,
+                                    ),
+                                    const SizedBox(height: 14),
+                                    PremiumTextField(
+                                      controller: _passwordController,
+                                      labelText: 'Password',
+                                      hintText: 'Min 6 characters',
+                                      prefixIcon: Icons.lock_rounded,
+                                      iconColor: const Color(0xFFA78BFA), // Lavender
+                                      isPassword: true,
+                                      validator: ValidationUtils.validatePassword,
+                                      enabled: !authState.isLoading,
+                                    ),
+                                    const SizedBox(height: 14),
+                                    PremiumTextField(
+                                      controller: _confirmPasswordController,
+                                      labelText: 'Confirm Password',
+                                      hintText: 'Re-enter your password',
+                                      prefixIcon: Icons.lock_clock_rounded,
+                                      iconColor: const Color(0xFF10B981), // Green
+                                      isPassword: true,
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please confirm your password';
+                                        }
+                                        if (value != _passwordController.text) {
+                                          return 'Passwords do not match';
+                                        }
+                                        return null;
+                                      },
+                                      enabled: !authState.isLoading,
+                                      textInputAction: TextInputAction.done,
+                                      onFieldSubmitted: (_) => _onRegisterPressed(),
+                                    ),
+                                    const SizedBox(height: 24),
+
+                                    // 3. Register Button
+                                    PremiumButton(
+                                      text: 'SIGN UP',
+                                      isLoading: authState.isLoading,
+                                      onPressed: _onRegisterPressed,
+                                    ),
+                                    const SizedBox(height: 24),
+
+                                    // 4. Footer link to sign in
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          'Already have an account? ',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            color: const Color(0xFF6B7280),
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        GestureDetector(
+                                          onTap: authState.isLoading ? null : () => context.pop(),
+                                          child: Text(
+                                            'Sign In',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              color: const Color(0xFF7B61FF),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -285,10 +277,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> with TickerProv
 
 Widget _build3DIcon(IconData icon, Color primaryColor) {
   return Container(
-    width: 40,
-    height: 40,
+    width: 32,
+    height: 32,
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(8),
       gradient: LinearGradient(
         colors: [
           primaryColor.withValues(alpha: 0.9),
@@ -318,7 +310,7 @@ Widget _build3DIcon(IconData icon, Color primaryColor) {
       child: Icon(
         icon,
         color: Colors.white,
-        size: 18,
+        size: 16,
       ),
     ),
   );
@@ -390,12 +382,12 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
           duration: const Duration(milliseconds: 200),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: hasError
                   ? Colors.red.shade400
                   : (_hasFocus ? const Color(0xFF7B61FF) : const Color(0xFFE5E7EB)),
-              width: _hasFocus || hasError ? 2.0 : 1.5,
+              width: _hasFocus || hasError ? 1.5 : 1.0,
             ),
             boxShadow: [
               BoxShadow(
@@ -404,12 +396,12 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
                     : (_hasFocus 
                         ? const Color(0xFF7B61FF).withValues(alpha: 0.08) 
                         : Colors.black.withValues(alpha: 0.03)),
-                blurRadius: _hasFocus || hasError ? 20 : 12,
-                offset: const Offset(0, 6),
+                blurRadius: _hasFocus || hasError ? 12 : 8,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
-          padding: const EdgeInsets.only(left: 14, right: 14, top: 4, bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
           child: TextFormField(
             controller: widget.controller,
             focusNode: _focusNode,
@@ -422,7 +414,7 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
             style: GoogleFonts.plusJakartaSans(
               color: const Color(0xFF1F2937),
               fontWeight: FontWeight.w600,
-              fontSize: 15,
+              fontSize: 14,
             ),
             validator: (value) {
               if (widget.validator != null) {
@@ -445,11 +437,12 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
                     ? Colors.red.shade400
                     : (_hasFocus ? const Color(0xFF7B61FF) : const Color(0xFF9CA3AF)),
                 fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
               hintText: widget.hintText,
               hintStyle: GoogleFonts.plusJakartaSans(
                 color: const Color(0xFF9CA3AF),
-                fontSize: 14,
+                fontSize: 13,
               ),
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
@@ -458,19 +451,19 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
               focusedErrorBorder: InputBorder.none,
               errorStyle: const TextStyle(height: 0.1, color: Colors.transparent),
               prefixIcon: Padding(
-                padding: const EdgeInsets.only(right: 12.0),
+                padding: const EdgeInsets.only(right: 10.0),
                 child: _build3DIcon(widget.prefixIcon, widget.iconColor),
               ),
               prefixIconConstraints: const BoxConstraints(
-                minWidth: 42,
-                minHeight: 42,
+                minWidth: 36,
+                minHeight: 36,
               ),
               suffixIcon: widget.isPassword
                   ? IconButton(
                       icon: Icon(
                         _obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                         color: const Color(0xFF9CA3AF),
-                        size: 22,
+                        size: 20,
                       ),
                       onPressed: () {
                         setState(() {
@@ -551,9 +544,9 @@ class _PremiumButtonState extends State<PremiumButton> with SingleTickerProvider
       child: ScaleTransition(
         scale: _buttonScale,
         child: Container(
-          height: 58,
+          height: 52,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(29),
+            borderRadius: BorderRadius.circular(26),
             gradient: const LinearGradient(
               colors: [
                 Color(0xFF7B61FF),
@@ -564,9 +557,9 @@ class _PremiumButtonState extends State<PremiumButton> with SingleTickerProvider
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF7B61FF).withValues(alpha: 0.35),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
+                color: const Color(0xFF7B61FF).withOpacity(0.35),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
@@ -584,9 +577,9 @@ class _PremiumButtonState extends State<PremiumButton> with SingleTickerProvider
                     widget.text,
                     style: GoogleFonts.plusJakartaSans(
                       color: Colors.white,
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
+                      letterSpacing: 1.0,
                     ),
                   ),
           ),
@@ -596,92 +589,3 @@ class _PremiumButtonState extends State<PremiumButton> with SingleTickerProvider
   }
 }
 
-class _BackgroundShapes extends StatelessWidget {
-  final Animation<double> floatAnimation;
-
-  const _BackgroundShapes({required this.floatAnimation});
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Floating Sphere 1 (Top Left)
-        Positioned(
-          top: 100,
-          left: -30,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, floatAnimation.value * 12),
-                child: child,
-              );
-            },
-            child: Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFFA78BFA).withValues(alpha: 0.22),
-                    const Color(0xFFA78BFA).withValues(alpha: 0.02),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Floating Sphere 2 (Bottom Right)
-        Positioned(
-          bottom: 120,
-          right: -40,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, -floatAnimation.value * 15),
-                child: child,
-              );
-            },
-            child: Container(
-              width: 130,
-              height: 130,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFF6CA8FF).withValues(alpha: 0.18),
-                    const Color(0xFF6CA8FF).withValues(alpha: 0.01),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Floating Dot
-        Positioned(
-          top: 250,
-          right: 40,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(floatAnimation.value * 5, -floatAnimation.value * 8),
-                child: child,
-              );
-            },
-            child: Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF7B61FF).withValues(alpha: 0.15),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}

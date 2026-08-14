@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/app_notification.dart';
 import '../providers/notification_provider.dart';
-import '../../../../core/utils/mock_database.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Theme constants
@@ -146,13 +145,15 @@ String _getNotificationRoute(AppNotification n) {
       final id = n.relatedItemId ?? '1';
       final title = Uri.encodeComponent(n.title);
       final desc = Uri.encodeComponent(n.description.replaceAll('\n', ' '));
-      return '/expenses/detail/$id?title=$title&amount=$desc';
+      final groupParam = n.groupId != null ? '&groupId=${n.groupId}' : '';
+      return '/expenses/detail/$id?title=$title&amount=$desc$groupParam';
     case 'settlement_received':
     case 'settlement_paid':
       final id = n.relatedItemId ?? '1';
       final title = Uri.encodeComponent(n.title);
       final desc = Uri.encodeComponent(n.description.replaceAll('\n', ' '));
-      return '/settlement/detail/$id?title=$title&amount=$desc';
+      final groupParam = n.groupId != null ? '&groupId=${n.groupId}' : '';
+      return '/settlement/detail/$id?title=$title&amount=$desc$groupParam';
     case 'nest_created':
     case 'nest_updated':
       final id = n.groupId ?? 'nest_1';
@@ -512,14 +513,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                       child: child,
                     );
                   },
-                  child: Image.asset(
-                    'assets/icons/hero_bell_3d.png',
-                    width: 155,
-                    height: 175,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => _Built3DBell(
-                      controller: _heroFloatController,
-                    ),
+                  child: _Built3DBell(
+                    controller: _heroFloatController,
                   ),
                 ),
               ),
@@ -742,8 +737,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                 confirmDismiss: (direction) async {
                   if (direction == DismissDirection.startToEnd) {
                     if (!notif.isRead) {
-                      notif.isRead = true;
-                      MockDatabase().triggerChange();
+                      ref.read(notificationServiceProvider).markAsRead(notif.id);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           backgroundColor: _kText,
@@ -759,8 +753,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                     }
                     return false; // Slides back in
                   } else {
-                    MockDatabase().notifications.remove(notif);
-                    MockDatabase().triggerChange();
+                    ref.read(notificationServiceProvider).deleteNotification(notif.id);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         backgroundColor: _kText,
@@ -779,8 +772,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                 child: _NotificationCard(
                   data: notif,
                   onTap: () {
-                    notif.isRead = true;
-                    MockDatabase().triggerChange();
+                    if (!notif.isRead) {
+                      ref.read(notificationServiceProvider).markAsRead(notif.id);
+                    }
                     context.push(_getNotificationRoute(notif));
                   },
                 ),

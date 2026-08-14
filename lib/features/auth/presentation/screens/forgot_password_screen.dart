@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/utils/validation_utils.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/animated_gradient_background.dart';
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -17,26 +18,14 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> wit
   final _emailController = TextEditingController();
   bool _emailSent = false;
 
-  late AnimationController _floatController;
-  late Animation<double> _floatAnimation;
 
-  @override
   void initState() {
     super.initState();
-    _floatController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat(reverse: true);
-
-    _floatAnimation = Tween<double>(begin: -1.0, end: 1.0).animate(
-      CurvedAnimation(parent: _floatController, curve: Curves.easeInOut),
-    );
   }
 
   @override
   void dispose() {
     _emailController.dispose();
-    _floatController.dispose();
     super.dispose();
   }
 
@@ -98,7 +87,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> wit
         child: Stack(
           children: [
             // Background Floating Shapes
-            _BackgroundShapes(floatAnimation: _floatAnimation),
+            const AnimatedGradientBackground(),
 
             // Main Content Area
             SafeArea(
@@ -568,70 +557,3 @@ class _PremiumButtonState extends State<PremiumButton> with SingleTickerProvider
   }
 }
 
-class _BackgroundShapes extends StatelessWidget {
-  final Animation<double> floatAnimation;
-
-  const _BackgroundShapes({required this.floatAnimation});
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Floating Sphere 1 (Top Left)
-        Positioned(
-          top: 120,
-          left: -40,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, floatAnimation.value * 12),
-                child: child,
-              );
-            },
-            child: Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFFA78BFA).withValues(alpha: 0.22),
-                    const Color(0xFFA78BFA).withValues(alpha: 0.02),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Floating Sphere 2 (Bottom Right)
-        Positioned(
-          bottom: 100,
-          right: -30,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, -floatAnimation.value * 15),
-                child: child,
-              );
-            },
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFF6CA8FF).withValues(alpha: 0.18),
-                    const Color(0xFF6CA8FF).withValues(alpha: 0.01),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}

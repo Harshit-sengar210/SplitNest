@@ -48,6 +48,13 @@ dependencies:
   video_player: ^2.11.1
   image_picker: ^1.0.8
   shared_preferences: ^2.5.5
+  google_sign_in: ^6.2.2
+  http: ^1.6.0
+  firebase_storage: ^13.4.6
+  fl_chart: ^1.2.0
+  app_links: ^7.2.1
+  flutter_local_notifications: ^22.3.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -59,6 +66,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -121,3 +129,13 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path_ios: "assets/images/app_icon.png"
+  ios_background: "#EDE9FF"
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_background: "#EDE9FF"
+  adaptive_icon_foreground: "assets/images/app_icon.png"

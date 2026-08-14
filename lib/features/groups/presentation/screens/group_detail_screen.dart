@@ -18,10 +18,12 @@ import '../../../activity/domain/models/activity.dart';
 import '../../../activity/presentation/screens/nest_timeline_screen.dart';
 import '../../../../core/widgets/premium_image_selector.dart';
 import 'dart:convert';
+import 'dart:ui';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../members/presentation/providers/member_providers.dart';
 import 'cycle_screen.dart';
+import 'package:flutter/services.dart';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const _kPurple = Color(0xFF7B61FF);
@@ -50,6 +52,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
   late TabController _tabController;
   int _tabIndex = 0;
   final _inviteEmailController = TextEditingController();
+  final ValueNotifier<double> _scrollOffset = ValueNotifier(0.0);
+  late ScrollController _scrollController;
 
   @override
   void initState() {
@@ -58,6 +62,12 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
     _tabController.addListener(() {
       if (!mounted) return;
       setState(() => _tabIndex = _tabController.index);
+    });
+    
+    _scrollController = ScrollController();
+    _scrollController.addListener(() {
+      if (!mounted) return;
+      _scrollOffset.value = _scrollController.offset;
     });
     
     // Set this group as the active nest
@@ -72,6 +82,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
   void dispose() {
     _tabController.dispose();
     _inviteEmailController.dispose();
+    _scrollController.dispose();
+    _scrollOffset.dispose();
     super.dispose();
   }
 
@@ -172,13 +184,26 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
           ),
         ),
       ),
-      error: (error, _) => Scaffold(
-        backgroundColor: _kBg1,
-        body: Center(
-          child: Text(error.toString(),
-              style: const TextStyle(color: _kError)),
-        ),
-      ),
+      error: (error, _) {
+        // Group was deleted — auto-redirect all members to dashboard
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('This group has been deleted.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            context.go('/dashboard');
+          }
+        });
+        return const Scaffold(
+          backgroundColor: _kBg1,
+          body: Center(
+            child: CircularProgressIndicator(color: _kPurple, strokeWidth: 2.5),
+          ),
+        );
+      },
     );
   }
 
@@ -220,25 +245,63 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
               ),
             ),
             SafeArea(
-              child: Column(
-                children: [
-                  _buildAppBar(group),
-                  _buildGroupHeader(group),
-                  _buildTabBar(),
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        ChatTab(group: group),
-                        _buildExpensesTab(group),
-                        _buildMembersTab(group),
-                        _buildBalanceTab(group),
-                        _buildActivityTimelineTab(group),
-                        _buildCycleTab(group),
-                      ],
+              bottom: false,
+              child: NestedScrollView(
+                controller: _scrollController,
+                headerSliverBuilder: (context, innerBoxIsScrolled) {
+                  return [
+                    SliverAppBar(
+                      pinned: true,
+                      backgroundColor: _kBg1,
+                      elevation: 0,
+                      automaticallyImplyLeading: false,
+                      titleSpacing: 0,
+                      title: _buildAppBar(group),
+                      toolbarHeight: 64, // Approximate height of _buildAppBar
                     ),
-                  ),
-                ],
+                    SliverToBoxAdapter(
+                      child: AnimatedBuilder(
+                        animation: _scrollOffset,
+                        builder: (context, child) {
+                          // Calculate blur and fade based on scroll offset
+                          double offset = _scrollOffset.value;
+                          double blur = (offset / 15).clamp(0.0, 15.0);
+                          double opacity = (1 - (offset / 150)).clamp(0.0, 1.0);
+                          
+                          // The transform gives a parallax effect so it moves up slower
+                          return Transform.translate(
+                            offset: Offset(0, offset * 0.4),
+                            child: Opacity(
+                              opacity: opacity,
+                              child: ImageFiltered(
+                                imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+                                child: child,
+                              ),
+                            ),
+                          );
+                        },
+                        child: _buildGroupHeader(group),
+                      ),
+                    ),
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _TabBarDelegate(
+                        child: _buildTabBar(),
+                      ),
+                    ),
+                  ];
+                },
+                body: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    ChatTab(group: group),
+                    _buildExpensesTab(group),
+                    _buildMembersTab(group),
+                    _buildBalanceTab(group),
+                    _buildActivityTimelineTab(group),
+                    _buildCycleTab(group),
+                  ],
+                ),
               ),
             ),
           ],
@@ -325,7 +388,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
           ),
           const Spacer(),
           GestureDetector(
-            onTap: () => _showShareMenu(group),
+            onTap: () => _showOptionsMenu(group),
             child: Container(
               width: 40,
               height: 40,
@@ -340,7 +403,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                   ),
                 ],
               ),
-              child: const Icon(Icons.share_rounded,
+              child: const Icon(Icons.more_horiz_rounded,
                   color: _kPurple, size: 18),
             ),
           ),
@@ -361,7 +424,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -512,7 +575,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
               ),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: () => _showShareMenu(group),
+                onTap: () => _showOptionsMenu(group),
                 child: Container(
                   width: 36,
                   height: 36,
@@ -526,7 +589,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
             ],
           ),
 
-          // Middle Section: Dedicated Current Cycle Card
+          // Middle and Bottom Section Combined
           hasNoActiveCycle
               ? Container(
                   margin: const EdgeInsets.only(top: 16),
@@ -572,6 +635,38 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                             borderRadius: BorderRadius.circular(100),
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildSummaryCard(
+                              label: 'Total Bills',
+                              value: '₹0',
+                              color: Colors.white,
+                              bgColor: Colors.transparent,
+                              icon: Icons.receipt_long_rounded,
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildSummaryCard(
+                              label: 'Pending',
+                              value: '₹0',
+                              color: const Color(0xFFFFB6B6),
+                              bgColor: Colors.transparent,
+                              icon: Icons.hourglass_top_rounded,
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildSummaryCard(
+                              label: 'Settled',
+                              value: '₹0',
+                              color: const Color(0xFF86EFAC),
+                              bgColor: Colors.transparent,
+                              icon: Icons.check_circle_rounded,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -641,13 +736,45 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                               minHeight: 5,
                             ),
                           ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildSummaryCard(
+                                  label: 'Total Bills',
+                                  value: '₹${stats.totalExpenses.toInt()}',
+                                  color: Colors.white,
+                                  bgColor: Colors.transparent,
+                                  icon: Icons.receipt_long_rounded,
+                                ),
+                              ),
+                              Expanded(
+                                child: _buildSummaryCard(
+                                  label: 'Pending',
+                                  value: '₹${stats.totalPending.toInt()}',
+                                  color: const Color(0xFFFFB6B6),
+                                  bgColor: Colors.transparent,
+                                  icon: Icons.hourglass_top_rounded,
+                                ),
+                              ),
+                              Expanded(
+                                child: _buildSummaryCard(
+                                  label: 'Settled',
+                                  value: '₹${stats.totalSettled.toInt()}',
+                                  color: const Color(0xFF86EFAC),
+                                  bgColor: Colors.transparent,
+                                  icon: Icons.check_circle_rounded,
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     );
                   },
                   loading: () => Container(
                     margin: const EdgeInsets.only(top: 16),
-                    height: 80,
+                    height: 140,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
@@ -665,95 +792,6 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                     ),
                     child: Text('Error: $err', style: const TextStyle(color: Colors.white)),
                   ),
-                ),
-
-          // Bottom Section: Three Financial Summary Cards
-          hasNoActiveCycle
-              ? Container(
-                  margin: const EdgeInsets.only(top: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildSummaryCard(
-                          label: 'Total Bills',
-                          value: '₹0',
-                          color: Colors.white,
-                          bgColor: Colors.white.withValues(alpha: 0.15),
-                          icon: Icons.receipt_long_rounded,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildSummaryCard(
-                          label: 'Pending',
-                          value: '₹0',
-                          color: const Color(0xFFFFB6B6),
-                          bgColor: Colors.white.withValues(alpha: 0.15),
-                          icon: Icons.hourglass_top_rounded,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildSummaryCard(
-                          label: 'Settled',
-                          value: '₹0',
-                          color: const Color(0xFF86EFAC),
-                          bgColor: Colors.white.withValues(alpha: 0.15),
-                          icon: Icons.check_circle_rounded,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : cycleAsync.when(
-                  data: (stats) {
-                    return Container(
-                      margin: const EdgeInsets.only(top: 16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _buildSummaryCard(
-                              label: 'Total Bills',
-                              value: '₹${stats.totalExpenses.toInt()}',
-                              color: Colors.white,
-                              bgColor: Colors.white.withValues(alpha: 0.15),
-                              icon: Icons.receipt_long_rounded,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildSummaryCard(
-                              label: 'Pending',
-                              value: '₹${stats.totalPending.toInt()}',
-                              color: const Color(0xFFFFB6B6),
-                              bgColor: Colors.white.withValues(alpha: 0.15),
-                              icon: Icons.hourglass_top_rounded,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildSummaryCard(
-                              label: 'Settled',
-                              value: '₹${stats.totalSettled.toInt()}',
-                              color: const Color(0xFF86EFAC),
-                              bgColor: Colors.white.withValues(alpha: 0.15),
-                              icon: Icons.check_circle_rounded,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  loading: () => Container(
-                    margin: const EdgeInsets.only(top: 16),
-                    height: 70,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Center(child: CircularProgressIndicator(color: Colors.white)),
-                  ),
-                  error: (err, _) => const SizedBox.shrink(),
                 ),
         ],
       ),
@@ -787,12 +825,15 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: GoogleFonts.plusJakartaSans(
-              color: color,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: GoogleFonts.plusJakartaSans(
+                color: color,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -802,7 +843,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
 
   Widget _buildTabBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Container(
         decoration: BoxDecoration(
           color: _kCard,
@@ -982,12 +1023,12 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                 subtitle: 'Start adding expenses to track your splits')
           else
             ...expenses.map((expense) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: ExpenseCard(
-                    expense: expense,
-                    onTap: () => _showExpenseActions(expense),
-                  ),
-                )),
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ExpenseCard(
+                  expense: expense,
+                  onTap: () => _showExpenseActions(expense, group),
+                ),
+              )),
         ],
       ),
       loading: () => const Center(
@@ -1421,79 +1462,6 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Who Owes Who',
-              style: TextStyle(
-                  color: _kText, fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            const SizedBox(height: 12),
-            if (balances.isEmpty)
-              _buildEmptyState(
-                  icon: Icons.check_circle_outline_rounded,
-                  title: 'All balances settled! 👍',
-                  subtitle: 'Everyone is even in this group')
-            else
-              ...balances.map((b) {
-                final fromName = _getMemberNameById(group, b.fromUserId);
-                final toName = _getMemberNameById(group, b.toUserId);
-                final isYouOwe = b.fromUserId == 'user_me';
-                final isYouOwed = b.toUserId == 'user_me';
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: _kCard,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isYouOwe
-                          ? _kError.withValues(alpha: 0.15)
-                          : isYouOwed
-                              ? _kSuccess.withValues(alpha: 0.15)
-                              : Colors.transparent,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(children: [
-                        Text(fromName,
-                            style: const TextStyle(
-                                color: _kText, fontWeight: FontWeight.bold)),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8),
-                          child: Icon(Icons.arrow_forward_rounded,
-                              color: _kSub, size: 14),
-                        ),
-                        Text(toName,
-                            style: const TextStyle(
-                                color: _kText, fontWeight: FontWeight.bold)),
-                      ]),
-                      Text(
-                        '₹${b.amount.toInt()}',
-                        style: TextStyle(
-                          color: isYouOwe
-                              ? _kError
-                              : isYouOwed
-                                  ? _kSuccess
-                                  : _kSub,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            const SizedBox(height: 24),
             // Settle Up Button
             GestureDetector(
               onTap: () => _showSettleUpBottomSheet(group, balances),
@@ -1579,6 +1547,79 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                 ),
               ),
             ),
+            const SizedBox(height: 24),
+            const Text(
+              'Who Owes Who',
+              style: TextStyle(
+                  color: _kText, fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            const SizedBox(height: 12),
+            if (balances.isEmpty)
+              _buildEmptyState(
+                  icon: Icons.check_circle_outline_rounded,
+                  title: 'All balances settled! 👍',
+                  subtitle: 'Everyone is even in this group')
+            else
+              ...balances.map((b) {
+                final fromName = _getMemberNameById(group, b.fromUserId);
+                final toName = _getMemberNameById(group, b.toUserId);
+                final isYouOwe = b.fromUserId == 'user_me';
+                final isYouOwed = b.toUserId == 'user_me';
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: _kCard,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isYouOwe
+                          ? _kError.withValues(alpha: 0.15)
+                          : isYouOwed
+                              ? _kSuccess.withValues(alpha: 0.15)
+                              : Colors.transparent,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(children: [
+                        Text(fromName,
+                            style: const TextStyle(
+                                color: _kText, fontWeight: FontWeight.bold)),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Icon(Icons.arrow_forward_rounded,
+                              color: _kSub, size: 14),
+                        ),
+                        Text(toName,
+                            style: const TextStyle(
+                                color: _kText, fontWeight: FontWeight.bold)),
+                      ]),
+                      Text(
+                        '₹${b.amount.toInt()}',
+                        style: TextStyle(
+                          color: isYouOwe
+                              ? _kError
+                              : isYouOwed
+                                  ? _kSuccess
+                                  : _kSub,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
           ],
         );
       },
@@ -1896,6 +1937,9 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
 
   // ── Action sheets ────────────────────────────────────────────────────────────
   void _showShareMenu(Group group) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final isAdmin = group.createdBy == currentUserId;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1916,7 +1960,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                   borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 20),
-            const Text('Invite Members',
+            const Text('Group Actions',
                 style: TextStyle(
                     color: _kText, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
@@ -1928,10 +1972,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                     .read(groupsListProvider.notifier)
                     .generateShareLink(group.id)
                     .then((link) {
+                  Clipboard.setData(ClipboardData(text: link));
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                        content: Text('Link copied: $link'),
+                        content: const Text('Link copied to clipboard!'),
                         backgroundColor: _kSuccess),
                   );
                 });
@@ -1947,10 +1992,83 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                   ref
                       .read(groupsListProvider.notifier)
                       .generateInviteCode(group.id);
+                  Navigator.pop(context);
+                } else {
+                  Clipboard.setData(ClipboardData(text: group.inviteCode!));
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: const Text('Code copied to clipboard!'),
+                        backgroundColor: _kSuccess),
+                  );
                 }
-                Navigator.pop(context);
               },
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showOptionsMenu(Group group) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final isAdmin = group.createdBy == currentUid ||
+        group.members.any((m) => (m.id == currentUid || m.id == 'user_me') && m.role == MemberRole.admin);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: _kCard,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(height: 20),
+            const Text('Group Options',
+                style: TextStyle(
+                    color: _kText, fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            _buildShareOption(
+              icon: Icons.share_rounded,
+              title: 'Share / Invite',
+              onTap: () {
+                Navigator.pop(context);
+                _showShareMenu(group);
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildShareOption(
+              icon: Icons.exit_to_app_rounded,
+              title: 'Leave Group',
+              iconColor: Colors.orange,
+              onTap: () {
+                Navigator.pop(context);
+                _confirmLeaveGroup(group);
+              },
+            ),
+            if (isAdmin) ...[
+              const SizedBox(height: 10),
+              _buildShareOption(
+                icon: Icons.delete_forever_rounded,
+                title: 'Delete Group',
+                iconColor: Colors.red,
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmDeleteGroup(group);
+                },
+              ),
+            ],
             const SizedBox(height: 12),
           ],
         ),
@@ -1958,10 +2076,64 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
     );
   }
 
+  void _confirmLeaveGroup(Group group) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Leave Group', style: TextStyle(color: _kText)),
+        content: const Text('Are you sure you want to leave this group?', style: TextStyle(color: _kSub)),
+        backgroundColor: _kCard,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: _kPurple)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              final currentUid = FirebaseAuth.instance.currentUser?.uid;
+              if (currentUid != null) {
+                ref.read(groupsListProvider.notifier).leaveGroup(group.id, currentUid);
+                context.go('/dashboard');
+              }
+            },
+            child: const Text('Leave', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteGroup(Group group) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Group', style: TextStyle(color: _kText)),
+        content: const Text('Are you sure you want to permanently delete this group? This action cannot be undone.', style: TextStyle(color: _kSub)),
+        backgroundColor: _kCard,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: _kPurple)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ref.read(groupsListProvider.notifier).deleteGroup(group.id);
+              context.go('/dashboard');
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildShareOption(
       {required IconData icon,
       required String title,
-      required VoidCallback onTap}) {
+      required VoidCallback onTap,
+      Color iconColor = _kPurple}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1977,10 +2149,10 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: _kPurple.withValues(alpha: 0.15),
+                color: iconColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: _kPurple, size: 18),
+              child: Icon(icon, color: iconColor, size: 18),
             ),
             const SizedBox(width: 14),
             Text(title,
@@ -1995,8 +2167,14 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
     );
   }
 
-  void _showExpenseActions(Expense expense) {
-    final creatorIsMe = expense.paidByUserId == 'user_me';
+  void _showExpenseActions(Expense expense, Group group) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final creatorIsMe = expense.paidByUserId == currentUid;
+    // Admin = group creator or a member with admin role
+    final isAdmin = group.createdBy == currentUid ||
+        group.members.any((m) => m.id == currentUid && m.role == MemberRole.admin);
+    final canModify = creatorIsMe || isAdmin;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2024,8 +2202,17 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                   fontWeight: FontWeight.bold,
                   fontSize: 16),
             ),
+            if (!canModify)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(24, 12, 24, 0),
+                child: Text(
+                  'Only the expense creator or an admin can edit or delete this expense.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _kSub, fontSize: 12),
+                ),
+              ),
             const SizedBox(height: 12),
-            if (creatorIsMe)
+            if (canModify)
               ListTile(
                 leading: const Icon(Icons.delete_outline_rounded,
                     color: _kError),
@@ -2294,27 +2481,15 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
                 final amt =
                     double.tryParse(controller.text.trim()) ?? 0.0;
                 if (amt <= 0) return;
-                if (youOwe) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                          'Only the receiver can confirm this settlement. Please ask ${member.name} to confirm receipt.'),
-                      backgroundColor: _kError,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                  );
-                  Navigator.pop(context);
-                  return;
-                }
+
+
 
                 ref
                     .read(settlementRepositoryProvider)
                     .settleDebt(
                       groupId: group.id,
-                      debtorId: member.id,
-                      creditorId: 'user_me',
+                      debtorId: youOwe ? 'user_me' : member.id,
+                      creditorId: youOwe ? member.id : 'user_me',
                       amount: amt,
                     )
                     .then((_) {
@@ -2421,4 +2596,27 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen>
   }
 }
 
+class _TabBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
 
+  _TabBarDelegate({required this.child});
+
+  @override
+  double get minExtent => 60.0;
+
+  @override
+  double get maxExtent => 60.0;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: _kBg1,
+      child: child,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_TabBarDelegate oldDelegate) {
+    return false;
+  }
+}

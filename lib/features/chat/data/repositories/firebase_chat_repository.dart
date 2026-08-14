@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../domain/models/message.dart';
-import 'mock_chat_repository.dart';
+import '../../domain/repositories/chat_repository.dart';
+import '../../../activity/data/services/notification_writer.dart';
 
 class FirebaseChatRepository implements ChatRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -99,11 +100,22 @@ class FirebaseChatRepository implements ChatRepository {
       'lastMessageType': message.messageType,
     };
 
-    // ── Atomic batch write ───────────────────────────────────────────────────
     final batch = _firestore.batch();
     batch.set(messageRef, messageData);   // 1. message document
     batch.update(nestRef, nestUpdate);    // 2. nest metadata
     await batch.commit();                 // both or neither
+
+    // Send a notification to all nest members (except the sender)
+    if (message.messageType != 'system') {
+      NotificationWriter.sendToGroup(
+        groupId: message.groupId,
+        title: senderName,
+        description: lastMessageText,
+        type: 'chat_message',
+        relatedItemId: generatedId,
+        excludeUserId: realSenderId,
+      );
+    }
   }
 
   @override

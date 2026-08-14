@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
-import '../utils/mock_database.dart';
-import 'database_provider.dart';
+import '../../features/balances/presentation/providers/balance_providers.dart';
+import '../../features/groups/presentation/providers/groups_provider.dart';
 
 /// Immutable snapshot of the current user's balance across all nests.
 class HomeBalanceState {
@@ -28,51 +28,41 @@ class HomeBalanceState {
 }
 
 /// Provides real-time balance data for the Home Screen.
-///
-/// Reads directly from [MockDatabase] (the singleton) so there is no async
-/// delay.  Rebuilds automatically whenever any expense, settlement, or group
-/// mutation fires [triggerChange] via [databaseChangeProvider].
+/// Now powered entirely by Firebase through balance_providers.
 final homeBalanceProvider = Provider<HomeBalanceState>((ref) {
-  // Re-compute whenever the database emits a change.
-  ref.watch(databaseChangeProvider);
+  final groupsState = ref.watch(groupsListProvider);
+  if (groupsState.isLoading) return HomeBalanceState.empty;
 
-  final db = MockDatabase();
+  double receive = 0;
+  double pay = 0;
 
-  double owedToYou = 0.0;
-  double youOwe = 0.0;
-
-  // Iterate over every balance entry across all groups.
-  for (final b in db.balances) {
-    if (b.toUserId == 'user_me') {
-      // Someone owes the current user.
-      owedToYou += b.amount;
-    } else if (b.fromUserId == 'user_me') {
-      // Current user owes someone.
-      youOwe += b.amount;
+  for (final group in groupsState.groups) {
+    final groupSummary = ref.watch(balanceSummaryProvider(group.id));
+    if (groupSummary.hasValue) {
+      receive += groupSummary.value!.willReceive;
+      pay += groupSummary.value!.willPay;
     }
   }
 
   return HomeBalanceState(
-    owedToYou: owedToYou,
-    youOwe: youOwe,
-    totalBalance: owedToYou - youOwe,
+    owedToYou: receive,
+    youOwe: pay,
+    totalBalance: receive - pay,
   );
 });
 
 /// Whether the current user is considered "new" (no data yet).
-///
-/// A user is new when they have zero nests. This provider rebuilds whenever
-/// the database changes or the user authentication state changes.
+/// Now relies on Firebase groups.
 final isNewUserProvider = Provider<bool>((ref) {
-  ref.watch(databaseChangeProvider);
-
   final authState = ref.watch(authStateChangesProvider);
   final user = authState.value;
   if (user == null) {
     return true; // Default to new user if not logged in
   }
 
-  final db = MockDatabase();
-  final hasActiveNests = db.groups.any((g) => g.createdBy == user.id || g.members.any((m) => m.id == user.id));
-  return !hasActiveNests;
+  final groupsState = ref.watch(groupsListProvider);
+  if (groupsState.isLoading) return false;
+
+  return groupsState.groups.isEmpty;
 });
+

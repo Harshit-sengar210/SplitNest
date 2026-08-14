@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../providers/ledger_provider.dart';
-import '../../domain/models/ledger_transaction.dart';
 import '../../domain/models/ledger_summary.dart';
 import '../../../../core/theme/app_colors.dart';
 
@@ -18,7 +17,6 @@ class LedgerScreen extends ConsumerStatefulWidget {
 
 class _LedgerScreenState extends ConsumerState<LedgerScreen> with SingleTickerProviderStateMixin {
   late AnimationController _floatController;
-  String _searchQuery = '';
 
   @override
   void initState() {
@@ -228,6 +226,18 @@ class _LedgerScreenState extends ConsumerState<LedgerScreen> with SingleTickerPr
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => context.push('/personal-ledger/history'),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: context.colors.card,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: context.colors.accentBrown.withOpacity(0.2)),
+                        ),
+                        child: Icon(Icons.history_rounded, size: 24, color: context.colors.textWhite),
                       ),
                     ),
                   ],
@@ -532,26 +542,14 @@ class _LedgerScreenState extends ConsumerState<LedgerScreen> with SingleTickerPr
                                           ),
                                         ),
                                         const SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            Text(
-                                              tx.categoryName,
-                                              style: GoogleFonts.inter(
-                                                color: context.colors.textSecondary,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Container(width: 4, height: 4, decoration: BoxDecoration(shape: BoxShape.circle, color: context.colors.textMuted)),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              dateStr,
-                                              style: GoogleFonts.inter(
-                                                color: context.colors.textMuted,
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ],
+                                        Text(
+                                          '${tx.categoryName} • $dateStr',
+                                          style: GoogleFonts.inter(
+                                            color: context.colors.textSecondary,
+                                            fontSize: 12,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ],
                                     ),

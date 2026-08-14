@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "43531260598",
+    "firebase_url": "https://splitnextproject-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "splitnextproject",
+    "storage_bucket": "splitnextproject.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:43531260598:android:5aa38f0e683d7ab276cc17",
+        "android_client_info": {
+          "package_name": "com.splitnest.split"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "43531260598-934eb1b8oca8uf2js1rni6eock2h1pq3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.splitnest.split",
+            "certificate_hash": "067ae1943c78ae755bf87099175113f7b69483a6"
+          }
+        },
+        {
+          "client_id": "43531260598-rek2kdfljelidqoh75c29ad1t3lbe93s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBe5Pqvz1fha2-bYGbs9p0DfmpxzTGt9BQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "43531260598-rek2kdfljelidqoh75c29ad1t3lbe93s.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

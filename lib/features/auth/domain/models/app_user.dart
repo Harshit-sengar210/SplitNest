@@ -7,6 +7,7 @@ class AppUser {
   final String? phone;
   final String? bio;
   final String? activeNestId;
+  final bool isAdmin;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -19,6 +20,7 @@ class AppUser {
     this.phone,
     this.bio,
     this.activeNestId,
+    this.isAdmin = false,
     required this.createdAt,
     this.updatedAt,
   });
@@ -33,6 +35,7 @@ class AppUser {
     String? bio,
     String? activeNestId,
     bool clearActiveNestId = false,
+    bool? isAdmin,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -45,6 +48,7 @@ class AppUser {
       phone: phone ?? this.phone,
       bio: bio ?? this.bio,
       activeNestId: clearActiveNestId ? null : (activeNestId ?? this.activeNestId),
+      isAdmin: isAdmin ?? this.isAdmin,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -60,6 +64,7 @@ class AppUser {
       'phone': phone,
       'bio': bio,
       'activeNestId': activeNestId,
+      'isAdmin': isAdmin,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': (updatedAt ?? createdAt).toIso8601String(),
     };
@@ -75,6 +80,7 @@ class AppUser {
       phone: map['phone'],
       bio: map['bio'],
       activeNestId: map['activeNestId'],
+      isAdmin: map['isAdmin'] == true,
       createdAt: map['createdAt'] != null
           ? DateTime.parse(map['createdAt'])
           : DateTime.now(),

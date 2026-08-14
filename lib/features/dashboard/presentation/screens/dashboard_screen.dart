@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,8 +14,6 @@ import '../../../groups/presentation/providers/groups_provider.dart';
 import '../../../activity/presentation/providers/activity_provider.dart';
 import '../../../activity/presentation/providers/notification_provider.dart';
 import '../../../ledger/presentation/providers/ledger_provider.dart';
-import '../../../../core/providers/balance_provider.dart';
-import '../../../../core/utils/mock_database.dart';
 import '../../../activity/presentation/providers/notification_provider.dart';
 import '../../../balances/presentation/providers/balance_providers.dart';
 
@@ -62,6 +61,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         onSeeAllTap: () {
           setState(() {
             _currentIndex = 1;
+          });
+        },
+        onViewLedgerTap: () {
+          setState(() {
+            _currentIndex = 3;
           });
         },
       ),
@@ -205,7 +209,7 @@ class _FintechNestCardState extends State<_FintechNestCard> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeInOut,
-          width: 175,
+          width: 125,
           transform: Matrix4.identity()..scale(_scale),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -231,7 +235,7 @@ class _FintechNestCardState extends State<_FintechNestCard> {
             children: [
               // 3D Cover Illustration Area
               Container(
-                height: 90,
+                height: 65,
                 decoration: BoxDecoration(
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(22),
@@ -246,28 +250,38 @@ class _FintechNestCardState extends State<_FintechNestCard> {
                 child: Stack(
                   children: [
                     Center(
-                      child: Image.asset(
-                        _getGroupImage(widget.type),
-                        width: 70,
-                        height: 70,
-                        fit: BoxFit.contain,
-                      ),
+                      child: _getGroupImage(widget.type).startsWith('http')
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: Image.network(
+                                _getGroupImage(widget.type),
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          : Image.asset(
+                              _getGroupImage(widget.type),
+                              width: 56,
+                              height: 56,
+                              fit: BoxFit.contain,
+                            ),
                     ),
                     if (widget.isActive)
                       Positioned(
-                        top: 8,
-                        left: 8,
+                        top: 6,
+                        left: 6,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                           decoration: BoxDecoration(
                             color: const Color(0xFF7B61FF),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Text(
                             'Active',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 9,
+                              fontSize: 8,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -279,7 +293,7 @@ class _FintechNestCardState extends State<_FintechNestCard> {
               
               // Details
               Padding(
-                padding: const EdgeInsets.all(12.0),
+                padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -289,26 +303,26 @@ class _FintechNestCardState extends State<_FintechNestCard> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                        fontSize: 12,
                         color: Color(0xFF1A1A1A),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 1),
                     Text(
                       widget.members,
                       style: const TextStyle(
                         color: Color(0xFF6B7280),
-                        fontSize: 11,
+                        fontSize: 10,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     if (widget.isOwed == null)
                       Text(
                         widget.balance,
                         style: const TextStyle(
                           color: Color(0xFF9CA3AF),
                           fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                          fontSize: 11,
                         ),
                       )
                     else ...[
@@ -316,7 +330,7 @@ class _FintechNestCardState extends State<_FintechNestCard> {
                         widget.isOwed! ? 'Owed' : 'You owe',
                         style: TextStyle(
                           color: widget.isOwed! ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                          fontSize: 9,
+                          fontSize: 8,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -325,7 +339,7 @@ class _FintechNestCardState extends State<_FintechNestCard> {
                         style: TextStyle(
                           color: widget.isOwed! ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                           fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                          fontSize: 11,
                         ),
                       ),
                     ],
@@ -348,12 +362,14 @@ class _HomeTab extends ConsumerWidget {
   final String? photoUrl;
   final VoidCallback? onAvatarTap;
   final VoidCallback? onSeeAllTap;
+  final VoidCallback? onViewLedgerTap;
 
   const _HomeTab({
     required this.displayName,
     this.photoUrl,
     this.onAvatarTap,
     this.onSeeAllTap,
+    this.onViewLedgerTap,
   });
 
   String _getHumanizedTime(DateTime dateTime) {
@@ -802,12 +818,18 @@ class _HomeTab extends ConsumerWidget {
       ref.watch(groupDetailProvider(activeNestId));
     }
 
+    // Watch auth state live so profile photo updates immediately
+    final livePhotoUrl = ref.watch(authNotifierProvider).user?.photoUrl ?? photoUrl;
+    final liveDisplayName = ref.watch(authNotifierProvider).user?.displayName ?? displayName;
+
     // 1. Fetch live states using dedicated Firestore StreamProviders
     final groupsState = ref.watch(groupsListProvider);
     final unreadCount = ref.watch(unreadNotificationsCountProvider);
     final ledgerSummaryAsync = ref.watch(ledgerSummaryProvider);
     final thisMonthSpend = ref.watch(thisMonthLedgerExpensesProvider);
     final notificationsAsync = ref.watch(notificationsStreamProvider);
+    final overallNetBalanceAsync = ref.watch(overallNetBalanceProvider);
+    final overallGroupBalanceAsync = ref.watch(overallGroupBalanceSummaryProvider);
 
     final themeBg = const Color(0xFFFFFDF8); // Clean soft ivory/white background
     final themePrimary = const Color(0xFF7B61FF);
@@ -850,7 +872,7 @@ class _HomeTab extends ConsumerWidget {
       child: Builder(
         builder: (context) {
           return SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -861,23 +883,23 @@ class _HomeTab extends ConsumerWidget {
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(
-                            Icons.menu_rounded,
-                            color: Color(0xFF7B61FF),
-                            size: 28,
+                          icon: Image.asset(
+                            'assets/images/app_icon.png',
+                            height: 38,
+                            fit: BoxFit.contain,
                           ),
                           onPressed: () {},
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 14),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Hi, ${displayName.isNotEmpty ? displayName : 'Harshit'}! 👋',
                               style: TextStyle(
-                                fontSize: 20,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w800,
                                 color: themeText,
                               ),
@@ -886,7 +908,7 @@ class _HomeTab extends ConsumerWidget {
                             Text(
                               'Welcome back',
                               style: TextStyle(
-                                fontSize: 13,
+                                fontSize: 11,
                                 color: themeTextSecondary,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -904,8 +926,8 @@ class _HomeTab extends ConsumerWidget {
                             clipBehavior: Clip.none,
                             children: [
                               Container(
-                                width: 44,
-                                height: 44,
+                                width: 38,
+                                height: 38,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   gradient: const LinearGradient(
@@ -934,7 +956,7 @@ class _HomeTab extends ConsumerWidget {
                                   child: Icon(
                                     Icons.notifications_active_rounded,
                                     color: Color(0xFF7B61FF),
-                                    size: 22,
+                                    size: 18,
                                   ),
                                 ),
                               ),
@@ -973,14 +995,14 @@ class _HomeTab extends ConsumerWidget {
                         GestureDetector(
                           onTap: onAvatarTap,
                           child: Container(
-                            width: 56,
-                            height: 56,
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: Colors.white,
                               border: Border.all(
                                 color: Colors.white,
-                                width: 3.0,
+                                width: 2.0,
                               ),
                               boxShadow: [
                                 BoxShadow(
@@ -991,15 +1013,17 @@ class _HomeTab extends ConsumerWidget {
                               ],
                             ),
                             child: ClipOval(
-                              child: photoUrl != null && photoUrl!.isNotEmpty
-                                  ? Image.network(photoUrl!, fit: BoxFit.cover)
+                              child: livePhotoUrl != null && livePhotoUrl.isNotEmpty
+                                  ? (livePhotoUrl.startsWith('data:image')
+                                      ? Image.memory(base64Decode(livePhotoUrl.contains(',') ? livePhotoUrl.split(',')[1] : livePhotoUrl), fit: BoxFit.cover)
+                                      : Image.network(livePhotoUrl, fit: BoxFit.cover))
                                   : Center(
                                       child: Text(
-                                        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'H',
+                                        liveDisplayName.isNotEmpty ? liveDisplayName[0].toUpperCase() : 'H',
                                         style: TextStyle(
                                           color: themePrimary,
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 20,
+                                          fontSize: 16,
                                         ),
                                       ),
                                     ),
@@ -1012,18 +1036,12 @@ class _HomeTab extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // 2. Top Wallet Card (Real-time computed Net Balance)
+                // 2. Top Wallet Card (Real-time computed Net Balance from Personal Ledger only)
                 ledgerSummaryAsync.when(
-                  data: (summary) {
-                    final totalIncome = summary?.totalIncome ?? 0.0;
-                    final totalExpense = summary?.totalExpense ?? 0.0;
-                    final totalLend = summary?.totalLend ?? 0.0;
-                    final totalBorrow = summary?.totalBorrow ?? 0.0;
-                    final netBalance = (totalIncome + totalLend) - (totalExpense + totalBorrow);
-                    final monthlyDiff = totalIncome - totalExpense;
-                    final monthlyText = monthlyDiff >= 0 
-                        ? '+₹${monthlyDiff.toStringAsFixed(0)} this month' 
-                        : '-₹${monthlyDiff.abs().toStringAsFixed(0)} this month';
+                  data: (ledgerSummary) {
+                    final totalLend = ledgerSummary.totalLend;
+                    final totalBorrow = ledgerSummary.totalBorrow;
+                    final netBalance = ledgerSummary.netBalance;
 
                     return Container(
                       decoration: BoxDecoration(
@@ -1046,69 +1064,121 @@ class _HomeTab extends ConsumerWidget {
                         ),
                       ),
                       padding: const EdgeInsets.all(24.0),
-                      child: Stack(
-                        clipBehavior: Clip.none,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          Stack(
+                            clipBehavior: Clip.none,
                             children: [
-                              Text(
-                                'SplitNest',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF7B61FF),
+                              Positioned(
+                                right: -10,
+                                top: -10,
+                                bottom: -10,
+                                child: SizedBox(
+                                  width: 140,
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Positioned(
+                                        top: 10,
+                                        left: 10,
+                                        child: Container(
+                                          width: 14,
+                                          height: 14,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: const Color(0xFFA78BFA).withValues(alpha: 0.8),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        bottom: 20,
+                                        right: 0,
+                                        child: Container(
+                                          width: 10,
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.6),
+                                          ),
+                                        ),
+                                      ),
+                                      _FloatingAnimationWrapper(
+                                        child: Image.asset(
+                                          'assets/images/Screenshot 2026-06-08 174019.png',
+                                          fit: BoxFit.contain,
+                                          // Add a slight opacity if it's too bold in the background
+                                          color: Colors.white.withOpacity(0.8),
+                                          colorBlendMode: BlendMode.dstIn,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Split Smart, Live Easy',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: themeTextSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              Text(
-                                'Total Net Balance',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: themeTextSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '₹${netBalance.toStringAsFixed(2)}',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w800,
-                                  color: themeText,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: monthlyDiff >= 0 ? const Color(0xFFE8F5E9) : const Color(0xFFFFEBEE),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Icon(
-                                      monthlyDiff >= 0 ? Icons.arrow_outward_rounded : Icons.south_west_rounded,
-                                      color: monthlyDiff >= 0 ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
-                                      size: 14,
-                                    ),
-                                    const SizedBox(width: 4),
                                     Text(
-                                      monthlyText,
+                                      'SplitNest',
                                       style: GoogleFonts.plusJakartaSans(
-                                        color: monthlyDiff >= 0 ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF7B61FF),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Split Smart, Live Easy.',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: themeTextSecondary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
+                                    Text(
+                                      'Total Net Balance',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: themeTextSecondary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '₹${netBalance.toStringAsFixed(2)}',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 24, // reduced from 28
+                                        fontWeight: FontWeight.w800,
+                                        color: themeText,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.arrow_outward_rounded, color: Color(0xFF10B981), size: 14),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '+₹${thisMonthSpend.toStringAsFixed(0)} this month',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: const Color(0xFF10B981),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -1116,48 +1186,137 @@ class _HomeTab extends ConsumerWidget {
                               ),
                             ],
                           ),
-                          Positioned(
-                            right: -10,
-                            top: -10,
-                            bottom: -10,
-                            child: SizedBox(
-                              width: 140,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Positioned(
-                                    top: 10,
-                                    left: 10,
-                                    child: Container(
-                                      width: 14,
-                                      height: 14,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: const Color(0xFFA78BFA).withValues(alpha: 0.8),
+                          const SizedBox(height: 24),
+                          Divider(color: const Color(0xFFE5E7EB), thickness: 1, height: 1),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: const Color(0xFFF3F4F6)),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.03),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
                                       ),
-                                    ),
+                                    ],
                                   ),
-                                  Positioned(
-                                    bottom: 20,
-                                    right: 0,
-                                    child: Container(
-                                      width: 10,
-                                      height: 10,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.6),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'You Will Receive',
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.bold,
+                                                color: themeTextSecondary,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              '₹${totalLend.toStringAsFixed(0)}',
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w800,
+                                                color: const Color(0xFF10B981),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
+                                      Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFE8F5E9),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_upward_rounded,
+                                          color: Color(0xFF10B981),
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  _FloatingAnimationWrapper(
-                                    child: Image.asset(
-                                      'assets/images/Screenshot 2026-06-08 174019.png',
-                                      fit: BoxFit.contain,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: const Color(0xFFF3F4F6)),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.03),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'You Owe',
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.bold,
+                                                color: themeTextSecondary,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              '₹${totalBorrow.toStringAsFixed(0)}',
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w800,
+                                                color: const Color(0xFFEF4444),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFFFEBEE),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_downward_rounded,
+                                          color: Color(0xFFEF4444),
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -1168,100 +1327,7 @@ class _HomeTab extends ConsumerWidget {
                 ),
                 const SizedBox(height: 28),
 
-                // 3. Balance Overview
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Balance Overview',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: themeText,
-                        fontSize: 18,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => context.push('/personal-ledger'),
-                      child: Text(
-                        'View Details >',
-                        style: TextStyle(
-                          color: themePrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ledgerSummaryAsync.when(
-                  data: (summary) {
-                    final willReceive = summary?.totalLend ?? 0.0;
-                    final willPay = summary?.totalBorrow ?? 0.0;
-                    final netBalance = willReceive - willPay;
-
-                    return GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      childAspectRatio: 1.4,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      children: [
-                        _buildBalanceCard(
-                          label: 'You Will Receive',
-                          amount: '₹${willReceive.toStringAsFixed(0)}',
-                          amountColor: const Color(0xFF10B981),
-                          iconColor: const Color(0xFF10B981),
-                          iconBgColor: const Color(0xFFE8F5E9),
-                          icon: Icons.arrow_upward_rounded,
-                        ),
-                        _buildBalanceCard(
-                          label: 'You Need To Pay',
-                          amount: '₹${willPay.toStringAsFixed(0)}',
-                          amountColor: const Color(0xFFEF4444),
-                          iconColor: const Color(0xFFEF4444),
-                          iconBgColor: const Color(0xFFFFEBEE),
-                          icon: Icons.arrow_downward_rounded,
-                        ),
-                        _buildBalanceCard(
-                          label: 'This Month Spend',
-                          amount: '₹${thisMonthSpend.toStringAsFixed(0)}',
-                          amountColor: const Color(0xFFF59E0B),
-                          iconColor: const Color(0xFFF59E0B),
-                          iconBgColor: const Color(0xFFFEF3C7),
-                          icon: Icons.shopping_bag_rounded,
-                        ),
-                        _buildBalanceCard(
-                          label: 'Net Balance',
-                          amount: '₹${netBalance.abs().toStringAsFixed(0)}',
-                          amountColor: const Color(0xFF7B61FF),
-                          iconColor: const Color(0xFF7B61FF),
-                          iconBgColor: const Color(0xFFEEF2FF),
-                          icon: Icons.trending_up_rounded,
-                        ),
-                      ],
-                    );
-                  },
-                  loading: () => GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    childAspectRatio: 1.4,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    children: List.generate(4, (_) => const _DashboardCardSkeleton(height: 100)),
-                  ),
-                  error: (err, _) => _DashboardCardError(message: err.toString()),
-                ),
-                const SizedBox(height: 28),
-
-                // 4. Current Financial Cycle Card
-                _GlobalFinancialCycleCard(
-                  onViewDetails: () => context.push('/personal-ledger'),
-                ),
-                const SizedBox(height: 28),
-
-                // 5. Quick Actions
+                // 3. Quick Actions
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1276,44 +1342,32 @@ class _HomeTab extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  child: Row(
-                    children: [
-                      _QuickActionButton(
-                        imagePath: 'assets/images/3d_wallet.png',
-                        label: 'Add Expense',
-                        onTap: () => context.push('/expenses/add'),
-                      ),
-                      const SizedBox(width: 12),
-                      _QuickActionButton(
-                        imagePath: 'assets/images/3d_people.png',
-                        label: 'Create Nest',
-                        onTap: () => context.push('/groups/create'),
-                      ),
-                      const SizedBox(width: 12),
-                      _QuickActionButton(
-                        imagePath: 'assets/images/3d_blue_wallet.png',
-                        label: 'Settle Up',
-                        onTap: () => context.push('/settlement'),
-                      ),
-                      const SizedBox(width: 12),
-                      _QuickActionButton(
-                        imagePath: 'assets/images/3d_scan.png',
-                        label: 'Scan Slip',
-                        onTap: () => context.push('/scan-receipt'),
-                      ),
-                      const SizedBox(width: 12),
-                      _QuickActionButton(
-                        imagePath: 'assets/images/3d_calendar.png',
-                        label: 'Calendar',
-                        onTap: () => context.push('/calendar'),
-                      ),
-                    ],
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _QuickActionButton(
+                      imagePath: 'assets/images/3d_people.png',
+                      label: 'Create Nest',
+                      onTap: () => context.push('/groups/create'),
+                    ),
+                    _QuickActionButton(
+                      imagePath: 'assets/images/3d_blue_wallet.png',
+                      label: 'Settle Up',
+                      onTap: () => context.push('/settlement'),
+                    ),
+                    _QuickActionButton(
+                      imagePath: 'assets/images/3d_scan.png',
+                      label: 'Scan Slip',
+                      onTap: () => context.push('/scan-receipt'),
+                    ),
+                    _QuickActionButton(
+                      icon: Icons.calendar_month_rounded,
+                      label: 'Calendar',
+                      onTap: () => context.push('/calendar'),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
 
                 // 6. Active Nests
                 Row(
@@ -1338,14 +1392,14 @@ class _HomeTab extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
-                  height: 210,
+                  height: groupsState.isLoading ? 160 : (groupsState.groups.isEmpty ? 240 : 160),
                   child: groupsState.isLoading
                       ? ListView.builder(
                           scrollDirection: Axis.horizontal,
                           itemCount: 3,
                           itemBuilder: (_, __) => const Padding(
                             padding: EdgeInsets.only(right: 16.0),
-                            child: _DashboardCardSkeleton(width: 175, height: 210),
+                            child: _DashboardCardSkeleton(width: 125, height: 160),
                           ),
                         )
                       : groupsState.groups.isEmpty
@@ -1448,7 +1502,7 @@ class _HomeTab extends ConsumerWidget {
                       ),
                     ),
                     TextButton(
-                      onPressed: () => context.push('/personal-ledger'),
+                      onPressed: onViewLedgerTap ?? () => context.push('/personal-ledger'),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -1500,7 +1554,7 @@ class _HomeTab extends ConsumerWidget {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: () => context.push('/personal-ledger'),
+                            onTap: onViewLedgerTap ?? () => context.push('/personal-ledger'),
                             child: Column(
                               children: [
                                 Padding(
@@ -1785,9 +1839,12 @@ class _ProfileTabState extends ConsumerState<_ProfileTab> {
 
   @override
   Widget build(BuildContext context) {
-    final displayName = widget.user?.displayName ?? 'SplitNester';
-    final email = widget.user?.email ?? 'contact@splitnester.app';
-    final phone = widget.user?.phone ?? '+91 98765 43210';
+    // Watch auth state directly so profile photo/name updates instantly
+    final authState = ref.watch(authNotifierProvider);
+    final liveUser = authState.user ?? widget.user;
+    final displayName = liveUser?.displayName ?? 'SplitNester';
+    final email = liveUser?.email ?? 'No email provided';
+    final phone = liveUser?.phone ?? 'No phone number provided';
 
     // Watch providers for live statistics
     final groupsState = ref.watch(groupsListProvider);
@@ -1795,9 +1852,9 @@ class _ProfileTabState extends ConsumerState<_ProfileTab> {
     final ledgerTransactions = ledgerTransactionsAsync.value ?? [];
 
     final totalNests = groupsState.groups.length;
-    final totalTransactions = ledgerTransactions.length;
+    final totalTransactions = ledgerTransactions.where((t) => t.status == 'completed').length;
     final totalSpent = ledgerTransactions
-        .where((t) => t.type.toLowerCase() == 'expense' || t.type.toLowerCase() == 'lend')
+        .where((t) => (t.type.toLowerCase() == 'expense' || t.type.toLowerCase() == 'lend') && t.status == 'completed')
         .fold(0.0, (sum, t) => sum + t.amount);
     final activeMembers = groupsState.groups.fold(0, (sum, g) => sum + g.membersCount);
 
@@ -1888,7 +1945,7 @@ class _ProfileTabState extends ConsumerState<_ProfileTab> {
                 ),
               ],
             ),
-            padding: const EdgeInsets.fromLTRB(16, 20, 0, 20),
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -1904,11 +1961,13 @@ class _ProfileTabState extends ConsumerState<_ProfileTab> {
                         color: Color(0xFFE8E0FF),
                       ),
                       child: ClipOval(
-                        child: widget.user?.photoUrl != null && widget.user!.photoUrl!.isNotEmpty
-                            ? Image.network(widget.user!.photoUrl!, fit: BoxFit.cover)
+                        child: liveUser?.photoUrl != null && liveUser!.photoUrl!.isNotEmpty
+                            ? (liveUser.photoUrl!.startsWith('data:image')
+                                ? Image.memory(base64Decode(liveUser.photoUrl!.contains(',') ? liveUser.photoUrl!.split(',')[1] : liveUser.photoUrl!), fit: BoxFit.cover)
+                                : Image.network(liveUser.photoUrl!, fit: BoxFit.cover))
                             : Center(
                                 child: Text(
-                                  displayName.isNotEmpty ? displayName[0].toUpperCase() : 'S',
+                                  displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U',
                                   style: GoogleFonts.plusJakartaSans(
                                     color: const Color(0xFF7B61FF),
                                     fontWeight: FontWeight.w800,
@@ -1949,20 +2008,13 @@ class _ProfileTabState extends ConsumerState<_ProfileTab> {
                     children: [
                       Text(
                         'Hi, $displayName! 👋',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFF1A1A1A),
                           height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Welcome back to SplitNest',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF6B7280),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -1998,26 +2050,20 @@ class _ProfileTabState extends ConsumerState<_ProfileTab> {
                             size: 13,
                           ),
                           const SizedBox(width: 5),
-                          Text(
-                            phone,
-                            style: GoogleFonts.plusJakartaSans(
-                              color: const Color(0xFF4F46E5),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                          Flexible(
+                            child: Text(
+                              phone,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.plusJakartaSans(
+                                color: const Color(0xFF4F46E5),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ],
-                  ),
-                ),
-                // Floating 3D wallet - large
-                _FloatingAnimationWrapper(
-                  child: Image.asset(
-                    'assets/images/3d_profile_wallet.png',
-                    width: 120,
-                    height: 120,
-                    fit: BoxFit.contain,
                   ),
                 ),
               ],
@@ -2068,7 +2114,7 @@ class _ProfileTabState extends ConsumerState<_ProfileTab> {
                   bgColor: const Color(0xFFEFF6FF),
                 ),
                 _buildStatsItem(
-                  icon: Icons.people_alt_rounded,
+                  imagePath: 'assets/images/3d_profile_members.png',
                   value: activeMembers.toString(),
                   label: 'Members',
                   iconColor: const Color(0xFFEF4444),
@@ -2268,6 +2314,36 @@ class _ProfileTabState extends ConsumerState<_ProfileTab> {
           ),
           const SizedBox(height: 28),
 
+          if (widget.user?.isAdmin == true) ...[
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFFE5E7EB),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: _buildMockupSettingsItem(
+                context,
+                imagePath: 'assets/images/icon_security.png',
+                iconBg: const Color(0xFFE0E7FF),
+                iconColor: const Color(0xFF4F46E5),
+                title: 'Admin Dashboard',
+                subtitle: 'Manage users, nests, and platform metrics',
+                onTapOverride: () => context.push('/admin'),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           // 6. Sign Out Button List Card
           Container(
             decoration: BoxDecoration(
@@ -2329,8 +2405,8 @@ class _ProfileTabState extends ConsumerState<_ProfileTab> {
               child: imagePath != null
                   ? Image.asset(
                       imagePath,
-                      width: 38,
-                      height: 38,
+                      width: 58,
+                      height: 58,
                       fit: BoxFit.contain,
                     )
                   : Icon(
@@ -2590,7 +2666,6 @@ class _LuxuryBottomNavBar extends StatelessWidget {
       {'icon': Icons.group_outlined, 'activeIcon': Icons.group_rounded, 'label': 'Groups'},
       {'icon': Icons.add_circle_outline_rounded, 'activeIcon': Icons.add_circle_rounded, 'label': 'Add'},
       {
-        'imagePath': 'assets/images/3d_ledger.png',
         'icon': Icons.menu_book_rounded,
         'activeIcon': Icons.menu_book_rounded,
         'label': 'Ledger'

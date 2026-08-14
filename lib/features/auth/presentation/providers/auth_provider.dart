@@ -3,20 +3,11 @@ import 'package:firebase_core/firebase_core.dart';
 import '../../domain/models/app_user.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../data/repositories/firebase_auth_repository.dart';
-import '../../data/repositories/mock_auth_repository.dart';
+import '../../../activity/data/services/push_notification_service.dart';
+import 'package:flutter/foundation.dart';
 
-// Check if Firebase is initialized. If yes, use FirebaseAuthRepository, else fall back to MockAuthRepository.
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  try {
-    if (Firebase.apps.isNotEmpty) {
-      return FirebaseAuthRepository();
-    }
-  } catch (_) {
-    // Firebase is not initialized, fallback to mock
-  }
-  
-  // Return mock auth repository (default fallback)
-  return MockAuthRepository();
+  return FirebaseAuthRepository();
 });
 
 // Stream provider to listen to login state updates
@@ -72,6 +63,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         try {
           final fullUser = await _repository.getCurrentUser();
           state = state.copyWith(user: fullUser ?? user, isLoading: false);
+          
+          if (!kIsWeb && fullUser != null) {
+            PushNotificationService().initialize(_ref);
+            PushNotificationService().handleInitialMessage(_ref);
+          }
         } catch (e) {
           state = state.copyWith(user: user, isLoading: false);
         }
@@ -182,6 +178,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   void clearError() {
     state = state.copyWith(errorMessage: null);
+  }
+
+  /// Re-fetches the full user profile from Firestore and updates state.
+  /// Call this after external Firestore writes (e.g. joining a nest) so that
+  /// the in-memory user reflects the latest data.
+  Future<void> refreshUser() async {
+    try {
+      final freshUser = await _repository.getCurrentUser();
+      if (freshUser != null) {
+        state = state.copyWith(user: freshUser);
+      }
+    } catch (_) {
+      // Non-fatal — state stays as-is
+    }
   }
 }
 

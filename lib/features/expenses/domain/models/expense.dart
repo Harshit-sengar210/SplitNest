@@ -139,6 +139,7 @@ class Expense {
   final DateTime createdAt;
   final DateTime updatedAt;
   final String createdBy;
+  final String? imageUrl;
 
   const Expense({
     required this.id,
@@ -156,6 +157,7 @@ class Expense {
     DateTime? createdAt,
     DateTime? updatedAt,
     this.createdBy = '',
+    this.imageUrl,
   }) : createdAt = createdAt ?? date,
        updatedAt = updatedAt ?? date;
 
@@ -175,6 +177,7 @@ class Expense {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? createdBy,
+    String? imageUrl,
   }) {
     return Expense(
       id: id ?? this.id,
@@ -192,6 +195,7 @@ class Expense {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
+      imageUrl: imageUrl ?? this.imageUrl,
     );
   }
 
@@ -209,6 +213,7 @@ class Expense {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
       'createdBy': createdBy,
+      'imageUrl': imageUrl,
       'splits': splits.map((x) => x.toMap()).toList(),
       // Backward compatibility fields
       'id': id,
@@ -257,6 +262,7 @@ class Expense {
       createdAt: cDate,
       updatedAt: uDate,
       createdBy: map['createdBy'] ?? '',
+      imageUrl: map['imageUrl'],
     );
   }
 }

@@ -5,6 +5,7 @@ import '../services/expenses_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/models/split_model.dart';
 import '../../domain/calculators/split_calculator.dart';
+import '../../../activity/data/services/notification_writer.dart';
 
 class FirebaseExpensesRepository implements ExpensesRepository {
   final ExpensesService _service;
@@ -44,6 +45,7 @@ class FirebaseExpensesRepository implements ExpensesRepository {
     String? description,
     String? currency,
     String? paidByName,
+    String? imageUrl,
   }) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) throw Exception('User not authenticated');
@@ -92,7 +94,7 @@ class FirebaseExpensesRepository implements ExpensesRepository {
       final List<({String id, String name})> selectedMembers = [];
       for (final split in splits) {
         final mId = split.userId == 'user_me' ? currentUser.uid : split.userId;
-        final mName = await resolveMemberName(mId);
+        final mName = split.memberName != 'Someone' && split.memberName.isNotEmpty ? split.memberName : await resolveMemberName(mId);
         selectedMembers.add((id: mId, name: mName));
       }
       splitModels.addAll(
@@ -105,7 +107,7 @@ class FirebaseExpensesRepository implements ExpensesRepository {
       final List<({String id, String name, double percentage})> memberPercentages = [];
       for (final split in splits) {
         final mId = split.userId == 'user_me' ? currentUser.uid : split.userId;
-        final mName = await resolveMemberName(mId);
+        final mName = split.memberName != 'Someone' && split.memberName.isNotEmpty ? split.memberName : await resolveMemberName(mId);
         final double pct = split.percentage ?? (amount > 0 ? (split.amount / amount) * 100.0 : 0.0);
         memberPercentages.add((id: mId, name: mName, percentage: pct));
       }
@@ -119,7 +121,7 @@ class FirebaseExpensesRepository implements ExpensesRepository {
       final List<({String id, String name, double shares})> memberShares = [];
       for (final split in splits) {
         final mId = split.userId == 'user_me' ? currentUser.uid : split.userId;
-        final mName = await resolveMemberName(mId);
+        final mName = split.memberName != 'Someone' && split.memberName.isNotEmpty ? split.memberName : await resolveMemberName(mId);
         final double sh = split.shares ?? 1.0;
         memberShares.add((id: mId, name: mName, shares: sh));
       }
@@ -134,7 +136,7 @@ class FirebaseExpensesRepository implements ExpensesRepository {
       final List<({String id, String name, double amount})> memberAmounts = [];
       for (final split in splits) {
         final mId = split.userId == 'user_me' ? currentUser.uid : split.userId;
-        final mName = await resolveMemberName(mId);
+        final mName = split.memberName != 'Someone' && split.memberName.isNotEmpty ? split.memberName : await resolveMemberName(mId);
         memberAmounts.add((id: mId, name: mName, amount: split.amount));
       }
       splitModels.addAll(
@@ -160,7 +162,22 @@ class FirebaseExpensesRepository implements ExpensesRepository {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'createdBy': currentUser.uid,
-      'splits': splits.map((x) => x.toMap()).toList(),
+      'imageUrl': imageUrl,
+      'splits': splits.map((x) {
+        final m = x.toMap();
+        if (m['memberId'] == 'user_me') m['memberId'] = currentUser.uid;
+        if (m['userId'] == 'user_me') m['userId'] = currentUser.uid;
+        if (m['paidBy'] == 'user_me') m['paidBy'] = currentUser.uid;
+        
+        final actualPaidBy = paidByUserId == 'user_me' ? currentUser.uid : paidByUserId;
+        final isSelfShare = m['memberId'] == actualPaidBy;
+        
+        m['settledAmount'] = isSelfShare ? m['amount'] : 0.0;
+        m['pendingAmount'] = isSelfShare ? 0.0 : m['amount'];
+        m['status'] = isSelfShare ? 'completed' : 'pending';
+        
+        return m;
+      }).toList(),
       // Backward compatibility fields
       'id': expenseId,
       'groupId': groupId,
@@ -180,6 +197,14 @@ class FirebaseExpensesRepository implements ExpensesRepository {
       expenseTitle: title,
     );
 
+    NotificationWriter.sendToGroup(
+      groupId: groupId,
+      title: 'New Expense Added',
+      description: '$resolvedPaidByName added a new expense: $title',
+      type: 'expense_added',
+      relatedItemId: expenseId,
+    );
+
     return Expense(
       id: expenseId,
       title: title,
@@ -196,6 +221,7 @@ class FirebaseExpensesRepository implements ExpensesRepository {
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
       createdBy: currentUser.uid,
+      imageUrl: imageUrl,
     );
   }
 
@@ -210,6 +236,17 @@ class FirebaseExpensesRepository implements ExpensesRepository {
 
     final data = expense.toMap();
     data['updatedAt'] = FieldValue.serverTimestamp();
+    
+    // Sanitize user_me
+    if (data['paidBy'] == 'user_me') data['paidBy'] = user.uid;
+    if (data['paidByUserId'] == 'user_me') data['paidByUserId'] = user.uid;
+    data['splits'] = expense.splits.map((x) {
+      final m = x.toMap();
+      if (m['memberId'] == 'user_me') m['memberId'] = user.uid;
+      if (m['userId'] == 'user_me') m['userId'] = user.uid;
+      if (m['paidBy'] == 'user_me') m['paidBy'] = user.uid;
+      return m;
+    }).toList();
 
     // Helper to resolve a member's name
     Future<String> resolveMemberName(String id) async {
@@ -231,7 +268,7 @@ class FirebaseExpensesRepository implements ExpensesRepository {
     final List<Map<String, dynamic>> splitsData = [];
     for (final split in expense.splits) {
       final mId = split.userId == 'user_me' ? user.uid : split.userId;
-      final mName = await resolveMemberName(mId);
+      final mName = split.memberName != 'Someone' && split.memberName.isNotEmpty ? split.memberName : await resolveMemberName(mId);
       splitsData.add({
         'memberId': mId,
         'memberName': mName,
@@ -256,6 +293,14 @@ class FirebaseExpensesRepository implements ExpensesRepository {
       actorUserName: user.displayName ?? user.email?.split('@').first ?? 'Someone',
       expenseTitle: expense.title,
     );
+
+    NotificationWriter.sendToGroup(
+      groupId: expense.groupId,
+      title: 'Expense Updated',
+      description: '${user.displayName ?? "Someone"} updated the expense: ${expense.title}',
+      type: 'expense_updated',
+      relatedItemId: expense.id,
+    );
   }
 
   @override
@@ -279,6 +324,14 @@ class FirebaseExpensesRepository implements ExpensesRepository {
       actorUserId: user.uid,
       actorUserName: user.displayName ?? user.email?.split('@').first ?? 'Someone',
       expenseTitle: oldExpense.title,
+    );
+
+    NotificationWriter.sendToGroup(
+      groupId: groupId,
+      title: 'Expense Deleted',
+      description: '${user.displayName ?? "Someone"} deleted the expense: ${oldExpense.title}',
+      type: 'expense_deleted',
+      relatedItemId: id,
     );
   }
 

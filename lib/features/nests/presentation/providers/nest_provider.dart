@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../domain/models/nest_model.dart';
 import '../../domain/repositories/nest_repository.dart';
 import '../../data/repositories/firebase_nest_repository.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 final nestRepositoryProvider = Provider<NestRepository>((ref) {
   return FirebaseNestRepository();
@@ -19,12 +20,17 @@ final nestDetailsProvider = FutureProvider.family<NestModel?, String>((ref, nest
   return repository.getNest(nestId);
 });
 
-// Stream of nests where the current authenticated user is a member
+// Stream of nests where the current authenticated user is a member.
+// Watches authNotifierProvider so it re-subscribes when the account changes.
 final createdNestsStreamProvider = StreamProvider<List<NestModel>>((ref) {
+  // Watch auth state so the stream is recreated on user change.
+  final authState = ref.watch(authNotifierProvider);
+  final userId = authState.user?.id;
+  if (userId == null) return Stream.value([]);
+
   final user = FirebaseAuth.instance.currentUser;
-  if (user == null) {
-    return Stream.value([]);
-  }
+  if (user == null) return Stream.value([]);
+
   return FirebaseFirestore.instance
       .collection('nests')
       .where('memberIds', arrayContains: user.uid)
@@ -32,12 +38,17 @@ final createdNestsStreamProvider = StreamProvider<List<NestModel>>((ref) {
       .map((snapshot) => snapshot.docs.map((doc) => NestModel.fromFirestore(doc)).toList());
 });
 
-// Stream of user's activeNestId to handle joined nests
+// Stream of user's activeNestId to handle joined nests.
+// Watches authNotifierProvider so it re-subscribes when the account changes.
 final activeNestIdStreamProvider = StreamProvider<String?>((ref) {
+  // Watch auth state so the stream is recreated on user change.
+  final authState = ref.watch(authNotifierProvider);
+  final userId = authState.user?.id;
+  if (userId == null) return Stream.value(null);
+
   final user = FirebaseAuth.instance.currentUser;
-  if (user == null) {
-    return Stream.value(null);
-  }
+  if (user == null) return Stream.value(null);
+
   return FirebaseFirestore.instance
       .collection('users')
       .doc(user.uid)

@@ -14,6 +14,7 @@ abstract class ExpensesRepository {
     String? description,
     String? currency,
     String? paidByName,
+    String? imageUrl,
   });
   Future<void> updateExpense(Expense expense);
   Future<void> deleteExpense(String id);

@@ -17,14 +17,17 @@ class LedgerTransactionDetailScreen extends ConsumerWidget {
     required this.transactionId,
   });
 
-  void _settleTransaction(BuildContext context, WidgetRef ref, List<LedgerTransaction> transactions) {
-    ref.read(ledgerControllerProvider).settleTransaction(transactionId, transactions);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Transaction marked as completed!', style: TextStyle(color: context.colors.textWhite)),
-        backgroundColor: context.colors.success.withOpacity(0.8),
-      ),
-    );
+  void _settleTransaction(BuildContext context, WidgetRef ref, List<LedgerTransaction> transactions) async {
+    await ref.read(ledgerControllerProvider).settleTransaction(transactionId, transactions);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Transaction marked as completed!', style: TextStyle(color: context.colors.textWhite)),
+          backgroundColor: context.colors.success.withOpacity(0.8),
+        ),
+      );
+      context.pop();
+    }
   }
 
   void _deleteTransaction(BuildContext context, WidgetRef ref) {

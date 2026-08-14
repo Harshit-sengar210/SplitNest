@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb;
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../../domain/models/app_user.dart';
 import '../../domain/repositories/auth_repository.dart';
 
@@ -56,12 +58,24 @@ class FirebaseAuthRepository implements AuthRepository {
       final doc = await _firestore.collection('users').doc(fbUser.uid).get();
       if (doc.exists) {
         return AppUser.fromMap(doc.data()!).copyWith(id: 'user_me');
+      } else {
+        // User document was deleted from Firestore but Auth is still valid.
+        // Recreate it to avoid race conditions during sign in/up.
+        final appUser = _mapFirebaseUser(fbUser);
+        await _firestore.collection('users').doc(fbUser.uid).set(appUser.copyWith(id: fbUser.uid).toMap());
+        return appUser.copyWith(id: 'user_me');
       }
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        // Token was likely revoked or user was deleted from console
+        await _firebaseAuth.signOut();
+        return null;
+      }
+      return _mapFirebaseUser(fbUser);
     } catch (_) {
-      // Fallback to basic firebase user data
+      // Fallback to basic firebase user data on network errors
+      return _mapFirebaseUser(fbUser);
     }
-    
-    return _mapFirebaseUser(fbUser);
   }
  
   String _mapAuthException(fb.FirebaseAuthException e) {
@@ -141,9 +155,34 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   Future<AppUser> signInWithGoogle() async {
-    // Google Sign-In requires platform-specific configuration.
-    // This is a placeholder hook for Firebase Google Sign-In.
-    throw UnimplementedError('Google Sign-in configuration required on Firebase console.');
+    try {
+      // serverClientId is the Web client ID (type 3) from google-services.json.
+      // It is required on Android to get an idToken for Firebase authentication.
+      const googleClientId = '43531260598-rek2kdfljelidqoh75c29ad1t3lbe93s.apps.googleusercontent.com';
+      final googleSignIn = kIsWeb
+          ? GoogleSignIn(clientId: googleClientId)
+          : GoogleSignIn(serverClientId: googleClientId);
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        throw Exception('Google Sign-In canceled by user.');
+      }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final fb.AuthCredential credential = fb.GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final fb.UserCredential userCredential = await _firebaseAuth.signInWithCredential(credential);
+      final fb.User? firebaseUser = userCredential.user;
+      if (firebaseUser == null) {
+        throw Exception('Google Sign-In failed.');
+      }
+
+      return await _getOrCreateUserDocument(firebaseUser);
+    } catch (e) {
+      throw Exception('Google Sign-In failed: $e');
+    }
   }
 
   @override
@@ -180,7 +219,27 @@ class FirebaseAuthRepository implements AuthRepository {
     required String? bio,
     required String? profileImage,
   }) async {
-    throw UnimplementedError('Backend profile updates are deferred.');
+    try {
+      final uid = _firebaseAuth.currentUser?.uid ?? userId;
+      final updates = <String, dynamic>{
+        'fullName': fullName,
+        if (username != null) 'username': username,
+        if (phone != null) 'phone': phone,
+        if (bio != null) 'bio': bio,
+        if (profileImage != null) 'profileImage': profileImage,
+        if (profileImage != null) 'photoUrl': profileImage,
+      };
+
+      await _firestore.collection('users').doc(uid).set(updates, SetOptions(merge: true));
+      
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (!doc.exists) {
+        throw Exception('User document not found after update.');
+      }
+      return AppUser.fromMap(doc.data()!).copyWith(id: uid);
+    } catch (e) {
+      throw Exception('Failed to update profile: $e');
+    }
   }
 
   @override

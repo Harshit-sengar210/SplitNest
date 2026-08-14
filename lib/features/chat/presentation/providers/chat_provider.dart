@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/message.dart';
-import '../../data/repositories/mock_chat_repository.dart';
+import '../../domain/repositories/chat_repository.dart';
+import '../../data/repositories/firebase_chat_repository.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Real-time message stream — Firestore snapshots() is the single source of truth
 // ─────────────────────────────────────────────────────────────────────────────
+final chatRepositoryProvider = Provider<ChatRepository>((ref) {
+  return FirebaseChatRepository();
+});
+
 final chatMessagesProvider = StreamProvider.family<List<Message>, String>((ref, groupId) {
   final repository = ref.watch(chatRepositoryProvider);
   // Riverpod disposes the stream subscription automatically when the provider

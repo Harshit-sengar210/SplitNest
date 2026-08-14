@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/gold_button.dart';
 import '../../../../core/widgets/app_header.dart';
+import 'dart:convert';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../providers/expenses_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -195,6 +198,57 @@ class ExpenseDetailScreen extends ConsumerWidget {
             ),
           ),
           
+          if (expense.imageUrl != null && expense.imageUrl!.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            GlassContainer(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ATTACHED BILL / RECEIPT',
+                    style: TextStyle(
+                      color: context.colors.textSecondary,
+                      letterSpacing: 1.5,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: expense.imageUrl!.startsWith('data:image')
+                        ? Image.memory(
+                            base64Decode(expense.imageUrl!.split(',').last),
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          )
+                        : Image.network(
+                            expense.imageUrl!,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                height: 200,
+                                color: context.colors.accentBrown.withOpacity(0.3),
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    color: context.colors.primaryGold,
+                                    value: loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
           if (expense.splits.isNotEmpty) ...[
             const SizedBox(height: 32),
             GlassContainer(
@@ -214,13 +268,28 @@ class ExpenseDetailScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   ...expense.splits.map((s) {
                     final isPaid = s.userId == expense.paidByUserId;
-                    final displayUser = s.userId == 'user_me' ? 'You' : s.userId.replaceAll('user_', '').toUpperCase();
+                    final isCurrentUser = s.userId == 'user_me' || 
+                        s.userId == FirebaseAuth.instance.currentUser?.uid;
+                        
+                    final displayUser = isCurrentUser 
+                        ? 'You' 
+                        : (s.memberName.isNotEmpty && s.memberName != 'Someone' 
+                            ? s.memberName 
+                            : s.userId.replaceAll('user_', '').toUpperCase());
+                            
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(displayUser, style: TextStyle(color: context.colors.textWhite, fontWeight: FontWeight.w600)),
+                          Expanded(
+                            child: Text(
+                              displayUser, 
+                              style: TextStyle(color: context.colors.textWhite, fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           Text(
                             '₹${s.amount.toStringAsFixed(2)}',
                             style: TextStyle(

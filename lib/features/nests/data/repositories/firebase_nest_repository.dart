@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../domain/models/nest_model.dart';
 import '../../domain/repositories/nest_repository.dart';
 import 'package:splitnest/features/groups/domain/calculators/cycle_calculator.dart';
+import '../../../activity/data/services/notification_writer.dart';
 
 class FirebaseNestRepository implements NestRepository {
   final FirebaseFirestore? _customFirestore;
@@ -170,6 +171,9 @@ class FirebaseNestRepository implements NestRepository {
     List<String>? inviteEmails,
     List<String>? inviteUsernames,
     List<String>? invitePhones,
+    int settlementCycleDate = 1,
+    DateTime? customStartDate,
+    DateTime? customEndDate,
   }) async {
     try {
       final user = _firebaseAuth.currentUser;
@@ -208,8 +212,10 @@ class FirebaseNestRepository implements NestRepository {
 
       // Firestore transaction to ensure atomic Nest creation, Subcollection writing, and User activeNestId update
       await _firestore.runTransaction((transaction) async {
-        final bounds = CycleCalculator.calculateCycleBounds(cycleDay: 1);
-        final cycleId = 'cycle_${bounds.start.year}_${bounds.start.month.toString().padLeft(2, '0')}_${DateTime.now().millisecondsSinceEpoch}';
+        final bounds = CycleCalculator.calculateCycleBounds(cycleDay: settlementCycleDate);
+        final initialStart = customStartDate ?? bounds.start;
+        final initialEnd = customEndDate ?? bounds.end;
+        final cycleId = 'cycle_${initialStart.year}_${initialStart.month.toString().padLeft(2, '0')}_${DateTime.now().millisecondsSinceEpoch}';
 
         // Prepare Nest data using FieldValue.serverTimestamp() for createdAt, updatedAt, lastActivity
         final nestMap = {
@@ -229,6 +235,9 @@ class FirebaseNestRepository implements NestRepository {
           'lastActivity': FieldValue.serverTimestamp(),
           'isArchived': false,
           'memberIds': memberIds,
+          'settlementCycleDate': settlementCycleDate,
+          'customStartDate': customStartDate != null ? Timestamp.fromDate(customStartDate) : null,
+          'customEndDate': customEndDate != null ? Timestamp.fromDate(customEndDate) : null,
         };
 
         // Write the Nest document
@@ -238,8 +247,8 @@ class FirebaseNestRepository implements NestRepository {
         final cycleRef = docRef.collection('Cycle').doc(cycleId);
         transaction.set(cycleRef, {
           'cycleId': cycleId,
-          'cycleStartDate': Timestamp.fromDate(bounds.start),
-          'cycleEndDate': Timestamp.fromDate(bounds.end),
+          'cycleStartDate': Timestamp.fromDate(initialStart),
+          'cycleEndDate': Timestamp.fromDate(initialEnd),
           'totalExpenses': 0.0,
           'totalSettled': 0.0,
           'totalPending': 0.0,
@@ -306,11 +315,19 @@ class FirebaseNestRepository implements NestRepository {
         });
       });
 
-      // Retrieve the newly created Nest document to construct a complete NestModel
       final createdDoc = await docRef.get();
       if (!createdDoc.exists) {
         throw Exception('Failed to retrieve created Nest document.');
       }
+
+      // Send notification to the creator
+      NotificationWriter.sendToUser(
+        targetUserId: creatorUid,
+        title: 'Nest Created',
+        description: 'You successfully created the nest "$name".',
+        type: 'nest_created',
+        groupId: docRef.id,
+      );
 
       return NestModel.fromFirestore(createdDoc);
     } catch (e) {

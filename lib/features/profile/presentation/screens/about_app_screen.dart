@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_header.dart';
 
@@ -414,7 +415,7 @@ class _AboutAppScreenState extends State<AboutAppScreen> with TickerProviderStat
                         const SizedBox(height: 6),
                         Center(
                           child: Text(
-                            'ANTIGRAVITY STUDIO',
+                            'CYBERLIM',
                             style: GoogleFonts.plusJakartaSans(
                               color: const Color(0xFF7B61FF),
                               fontSize: 13,
@@ -443,13 +444,20 @@ class _AboutAppScreenState extends State<AboutAppScreen> with TickerProviderStat
                           width: double.infinity,
                           height: 56,
                           child: OutlinedButton(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Navigating to splitnest.com...', style: GoogleFonts.plusJakartaSans(color: Colors.white)),
-                                  backgroundColor: const Color(0xFF7B61FF),
-                                ),
-                              );
+                            onPressed: () async {
+                              final Uri url = Uri.parse('https://cyberlim.com');
+                              if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Could not launch website', style: GoogleFonts.plusJakartaSans(color: Colors.white)),
+                                      backgroundColor: Colors.red,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  );
+                                }
+                              }
                             },
                             style: OutlinedButton.styleFrom(
                               side: const BorderSide(color: Color(0xFF7B61FF), width: 1.5),

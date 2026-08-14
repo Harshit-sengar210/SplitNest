@@ -340,7 +340,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> with Tick
                                 style: GoogleFonts.plusJakartaSans(color: const Color(0xFF6B7280), fontSize: 12, fontWeight: FontWeight.w500),
                               ),
                             ),
-                            const SizedBox(height: 36),
+                            const SizedBox(height: 16),
 
                             // 2. Input Fields (22px card styling)
                             PremiumTextField(
@@ -350,14 +350,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> with Tick
                               iconColor: const Color(0xFF7B61FF),
                               validator: (val) => val == null || val.isEmpty ? 'Required' : null,
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 12),
                             PremiumTextField(
                               controller: _usernameController,
                               labelText: 'Username',
                               prefixIcon: Icons.alternate_email_rounded,
                               iconColor: const Color(0xFF6CA8FF),
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 12),
                             PremiumTextField(
                               controller: _emailController,
                               labelText: 'Email Address',
@@ -365,7 +365,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> with Tick
                               prefixIcon: Icons.email_rounded,
                               iconColor: const Color(0xFFA78BFA),
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 12),
                             PremiumTextField(
                               controller: _phoneController,
                               labelText: 'Phone Number',
@@ -373,48 +373,56 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> with Tick
                               prefixIcon: Icons.phone_rounded,
                               iconColor: const Color(0xFF10B981),
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 12),
                             PremiumTextField(
                               controller: _bioController,
                               labelText: 'Bio',
                               prefixIcon: Icons.info_rounded,
                               iconColor: const Color(0xFFF59E0B),
                             ),
-                            const SizedBox(height: 36),
-
-                            // 3. Actions
-                            PremiumButton(
-                              text: 'SAVE CHANGES',
-                              isLoading: false,
-                              onPressed: _handleSave,
-                            ),
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 56,
-                              child: OutlinedButton(
-                                onPressed: () {
-                                  if (_hasUnsavedChanges) {
-                                    _confirmDiscard();
-                                  } else {
-                                    context.pop();
-                                  }
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-                                  foregroundColor: const Color(0xFF1F2937),
-                                ),
-                                child: Text(
-                                  'CANCEL',
-                                  style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 1.2),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 32),
+                            const SizedBox(height: 12),
                           ],
                         ),
                       ),
+                    ),
+                  ),
+                  // Pinned bottom actions
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+                    decoration: BoxDecoration(
+                      color: Colors.transparent,
+                    ),
+                    child: Column(
+                      children: [
+                        PremiumButton(
+                          text: 'SAVE CHANGES',
+                          isLoading: false,
+                          onPressed: _handleSave,
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: OutlinedButton(
+                            onPressed: () {
+                              if (_hasUnsavedChanges) {
+                                _confirmDiscard();
+                              } else {
+                                context.pop();
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                              foregroundColor: const Color(0xFF1F2937),
+                            ),
+                            child: Text(
+                              'CANCEL',
+                              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 1.2),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

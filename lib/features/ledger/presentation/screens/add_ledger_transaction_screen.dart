@@ -25,8 +25,9 @@ class _AddLedgerTransactionScreenState extends ConsumerState<AddLedgerTransactio
 
   String _selectedType = 'expense'; // 'expense', 'income', 'lend', 'borrow'
   String _selectedCategory = 'Food';
+  String _selectedDateString = '';
   DateTime _selectedDate = DateTime.now();
-  String _status = 'pending';
+  String _status = 'completed';
   bool _isLoading = false;
 
   final List<String> _categories = [

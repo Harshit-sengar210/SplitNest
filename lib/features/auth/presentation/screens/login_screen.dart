@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,9 +7,12 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/validation_utils.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/google_signin_button.dart';
+import '../widgets/animated_gradient_background.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  final bool autoRedirectToWebsite;
+  
+  const LoginScreen({super.key, this.autoRedirectToWebsite = false});
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -20,12 +24,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
   final _passwordController = TextEditingController();
 
   late AnimationController _animController;
-  late AnimationController _floatController;
   late Animation<double> _bgFade;
   late Animation<Offset> _panelSlide;
   late List<Animation<double>> _staggeredFades;
   late List<Animation<Offset>> _staggeredSlides;
-  late Animation<double> _floatAnimation;
 
   @override
   void initState() {
@@ -33,15 +35,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
-    );
-
-    _floatController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat(reverse: true);
-
-    _floatAnimation = Tween<double>(begin: -1.0, end: 1.0).animate(
-      CurvedAnimation(parent: _floatController, curve: Curves.easeInOut),
     );
 
     _bgFade = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -66,12 +59,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
     }
 
     _animController.forward();
+
+    if (widget.autoRedirectToWebsite) {
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) {
+          context.go('/website');
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _animController.dispose();
-    _floatController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -152,171 +152,179 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
         child: Stack(
           children: [
             // Background Floating Shapes
-            _BackgroundShapes(floatAnimation: _floatAnimation),
+            const AnimatedGradientBackground(),
             
-            // Scrollable Content
+            // Content Layout
             SafeArea(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 8),
-                      // Index 0: Hero Illustration
-                      _buildStaggeredItem(0, _HeroIllustration(floatAnimation: _floatAnimation)),
-                      const SizedBox(height: 24),
-                      
-                      // Index 1: Welcome Text
-                      _buildStaggeredItem(1, Column(
-                        children: [
-                          Text(
-                            'Welcome Back 👋',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF1F2937),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+                  child: Form(
+                    key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SizedBox(height: 60),
+                                
+                                // Index 1: Welcome Text
+                                _buildStaggeredItem(1, Column(
+                                  children: [
+                                    Text(
+                                      'Welcome Back 👋',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF1F2937),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Split expenses. Live easy.',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500,
+                                        color: const Color(0xFF6B7280),
+                                        height: 1.3,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                )),
+                                const SizedBox(height: 18),
+                                
+                                // Index 2: Email Field
+                                _buildStaggeredItem(2, PremiumTextField(
+                                  controller: _emailController,
+                                  labelText: 'Email Address',
+                                  hintText: 'name@example.com',
+                                  prefixIcon: Icons.email_rounded,
+                                  iconColor: const Color(0xFF7B61FF), // Purple
+                                  keyboardType: TextInputType.emailAddress,
+                                  validator: ValidationUtils.validateEmail,
+                                  enabled: !authState.isLoading,
+                                )),
+                                const SizedBox(height: 14),
+                                
+                                // Index 3: Password Field
+                                _buildStaggeredItem(3, Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    PremiumTextField(
+                                      controller: _passwordController,
+                                      labelText: 'Password',
+                                      hintText: 'Enter your password',
+                                      prefixIcon: Icons.lock_rounded,
+                                      iconColor: const Color(0xFF6CA8FF), // Blue
+                                      isPassword: true,
+                                      validator: ValidationUtils.validatePassword,
+                                      enabled: !authState.isLoading,
+                                      textInputAction: TextInputAction.done,
+                                      onFieldSubmitted: (_) => _onLoginPressed(),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton(
+                                        onPressed: authState.isLoading ? null : () => context.push('/forgot-password'),
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                        child: Text(
+                                          'Forgot Password?',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            color: const Color(0xFF7B61FF),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )),
+                                const SizedBox(height: 4),
+                                
+                                // Index 4: Sign In Button
+                                _buildStaggeredItem(4, PremiumButton(
+                                  text: 'SIGN IN',
+                                  isLoading: authState.isLoading,
+                                  onPressed: _onLoginPressed,
+                                )),
+                                const SizedBox(height: 16),
+                                
+                                // Index 5: OR Separator
+                                _buildStaggeredItem(5, Row(
+                                  children: [
+                                    const Expanded(child: Divider(color: Color(0xFFE5E7EB), thickness: 1.5)),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Text(
+                                        'OR CONTINUE WITH',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          color: const Color(0xFF9CA3AF),
+                                          fontSize: 11,
+                                          letterSpacing: 1.2,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                    const Expanded(child: Divider(color: Color(0xFFE5E7EB), thickness: 1.5)),
+                                  ],
+                                )),
+                                const SizedBox(height: 14),
+                                
+                                // Index 6: Google & Apple Buttons + Footer
+                                _buildStaggeredItem(6, Column(
+                                  children: [
+                                    GoogleSignInButton(
+                                      isLoading: authState.isLoading,
+                                      onPressed: _onGoogleLoginPressed,
+                                    ),
+                                    if (defaultTargetPlatform == TargetPlatform.iOS) ...[
+                                      const SizedBox(height: 10),
+                                      AppleSignInButton(
+                                        isLoading: authState.isLoading,
+                                        onPressed: () {
+                                          debugPrint("Apple Sign In pressed");
+                                        },
+                                      ),
+                                    ],
+                                    const SizedBox(height: 18),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          "Don't have an account? ",
+                                          style: GoogleFonts.plusJakartaSans(
+                                            color: const Color(0xFF6B7280),
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        GestureDetector(
+                                          onTap: authState.isLoading ? null : () => context.push('/register'),
+                                          child: Text(
+                                            'Sign Up',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              color: const Color(0xFF7B61FF),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                )),
+                              ],
                             ),
-                            textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Split expenses. Live easy.',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: const Color(0xFF6B7280),
-                              height: 1.4,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      )),
-                      const SizedBox(height: 32),
-                      
-                      // Index 2: Email Field
-                      _buildStaggeredItem(2, PremiumTextField(
-                        controller: _emailController,
-                        labelText: 'Email Address',
-                        hintText: 'name@example.com',
-                        prefixIcon: Icons.email_rounded,
-                        iconColor: const Color(0xFF7B61FF), // Purple
-                        keyboardType: TextInputType.emailAddress,
-                        validator: ValidationUtils.validateEmail,
-                        enabled: !authState.isLoading,
-                      )),
-                      const SizedBox(height: 20),
-                      
-                      // Index 3: Password Field
-                      _buildStaggeredItem(3, Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          PremiumTextField(
-                            controller: _passwordController,
-                            labelText: 'Password',
-                            hintText: 'Enter your password',
-                            prefixIcon: Icons.lock_rounded,
-                            iconColor: const Color(0xFF6CA8FF), // Blue
-                            isPassword: true,
-                            validator: ValidationUtils.validatePassword,
-                            enabled: !authState.isLoading,
-                            textInputAction: TextInputAction.done,
-                            onFieldSubmitted: (_) => _onLoginPressed(),
-                          ),
-                          const SizedBox(height: 4),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: authState.isLoading ? null : () => context.push('/forgot-password'),
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: Text(
-                                'Forgot Password?',
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: const Color(0xFF7B61FF),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      )),
-                      const SizedBox(height: 12),
-                      
-                      // Index 4: Sign In Button
-                      _buildStaggeredItem(4, PremiumButton(
-                        text: 'SIGN IN',
-                        isLoading: authState.isLoading,
-                        onPressed: _onLoginPressed,
-                      )),
-                      const SizedBox(height: 28),
-                      
-                      // Index 5: OR Separator
-                      _buildStaggeredItem(5, Row(
-                        children: [
-                          const Expanded(child: Divider(color: Color(0xFFE5E7EB), thickness: 1.5)),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(
-                              'OR CONTINUE WITH',
-                              style: GoogleFonts.plusJakartaSans(
-                                color: const Color(0xFF9CA3AF),
-                                fontSize: 11,
-                                letterSpacing: 1.2,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          const Expanded(child: Divider(color: Color(0xFFE5E7EB), thickness: 1.5)),
-                        ],
-                      )),
-                      const SizedBox(height: 24),
-                      
-                      // Index 6: Google Button & Footer
-                      _buildStaggeredItem(6, Column(
-                        children: [
-                          GoogleSignInButton(
-                            isLoading: authState.isLoading,
-                            onPressed: _onGoogleLoginPressed,
-                          ),
-                          const SizedBox(height: 32),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                "Don't have an account? ",
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: const Color(0xFF6B7280),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: authState.isLoading ? null : () => context.push('/register'),
-                                child: Text(
-                                  'Sign Up',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    color: const Color(0xFF7B61FF),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      )),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+                        ),
+                      ),
+                    ),
+                  ],
         ),
       ),
     );
@@ -329,10 +337,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
 
 Widget _build3DIcon(IconData icon, Color primaryColor) {
   return Container(
-    width: 40,
-    height: 40,
+    width: 32,
+    height: 32,
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(8),
       gradient: LinearGradient(
         colors: [
           primaryColor.withOpacity(0.9),
@@ -362,7 +370,7 @@ Widget _build3DIcon(IconData icon, Color primaryColor) {
       child: Icon(
         icon,
         color: Colors.white,
-        size: 18,
+        size: 16,
       ),
     ),
   );
@@ -434,12 +442,12 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
           duration: const Duration(milliseconds: 200),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: hasError
                   ? Colors.red.shade400
                   : (_hasFocus ? const Color(0xFF7B61FF) : const Color(0xFFE5E7EB)),
-              width: _hasFocus || hasError ? 2.0 : 1.5,
+              width: _hasFocus || hasError ? 1.5 : 1.0,
             ),
             boxShadow: [
               BoxShadow(
@@ -448,12 +456,12 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
                     : (_hasFocus 
                         ? const Color(0xFF7B61FF).withOpacity(0.08) 
                         : Colors.black.withOpacity(0.03)),
-                blurRadius: _hasFocus || hasError ? 20 : 12,
-                offset: const Offset(0, 6),
+                blurRadius: _hasFocus || hasError ? 12 : 8,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
-          padding: const EdgeInsets.only(left: 14, right: 14, top: 4, bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
           child: TextFormField(
             controller: widget.controller,
             focusNode: _focusNode,
@@ -466,7 +474,7 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
             style: GoogleFonts.plusJakartaSans(
               color: const Color(0xFF1F2937),
               fontWeight: FontWeight.w600,
-              fontSize: 15,
+              fontSize: 14,
             ),
             validator: (value) {
               if (widget.validator != null) {
@@ -489,11 +497,12 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
                     ? Colors.red.shade400
                     : (_hasFocus ? const Color(0xFF7B61FF) : const Color(0xFF9CA3AF)),
                 fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
               hintText: widget.hintText,
               hintStyle: GoogleFonts.plusJakartaSans(
                 color: const Color(0xFF9CA3AF),
-                fontSize: 14,
+                fontSize: 13,
               ),
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
@@ -502,19 +511,19 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
               focusedErrorBorder: InputBorder.none,
               errorStyle: const TextStyle(height: 0.1, color: Colors.transparent), // hide default error UI
               prefixIcon: Padding(
-                padding: const EdgeInsets.only(right: 12.0),
+                padding: const EdgeInsets.only(right: 10.0),
                 child: _build3DIcon(widget.prefixIcon, widget.iconColor),
               ),
               prefixIconConstraints: const BoxConstraints(
-                minWidth: 42,
-                minHeight: 42,
+                minWidth: 36,
+                minHeight: 36,
               ),
               suffixIcon: widget.isPassword
                   ? IconButton(
                       icon: Icon(
                         _obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                         color: const Color(0xFF9CA3AF),
-                        size: 22,
+                        size: 20,
                       ),
                       onPressed: () {
                         setState(() {
@@ -595,9 +604,9 @@ class _PremiumButtonState extends State<PremiumButton> with SingleTickerProvider
       child: ScaleTransition(
         scale: _buttonScale,
         child: Container(
-          height: 58,
+          height: 52,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(29),
+            borderRadius: BorderRadius.circular(26),
             gradient: const LinearGradient(
               colors: [
                 Color(0xFF7B61FF), // #7B61FF
@@ -609,8 +618,8 @@ class _PremiumButtonState extends State<PremiumButton> with SingleTickerProvider
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF7B61FF).withOpacity(0.35),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
@@ -628,9 +637,9 @@ class _PremiumButtonState extends State<PremiumButton> with SingleTickerProvider
                     widget.text,
                     style: GoogleFonts.plusJakartaSans(
                       color: Colors.white,
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
+                      letterSpacing: 1.0,
                     ),
                   ),
           ),
@@ -640,270 +649,102 @@ class _PremiumButtonState extends State<PremiumButton> with SingleTickerProvider
   }
 }
 
-class _BackgroundShapes extends StatelessWidget {
-  final Animation<double> floatAnimation;
 
-  const _BackgroundShapes({required this.floatAnimation});
+class AppleSignInButton extends StatefulWidget {
+  final VoidCallback? onPressed;
+  final bool isLoading;
+
+  const AppleSignInButton({
+    super.key,
+    required this.onPressed,
+    this.isLoading = false,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Floating Sphere 1 (Top Left)
-        Positioned(
-          top: 80,
-          left: -20,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, floatAnimation.value * 12),
-                child: child,
-              );
-            },
-            child: Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFFA78BFA).withOpacity(0.25),
-                    const Color(0xFFA78BFA).withOpacity(0.02),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Floating Sphere 2 (Middle Right)
-        Positioned(
-          top: 350,
-          right: -30,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, -floatAnimation.value * 15),
-                child: child,
-              );
-            },
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFF6CA8FF).withOpacity(0.2),
-                    const Color(0xFF6CA8FF).withOpacity(0.01),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Floating Dot 1
-        Positioned(
-          top: 220,
-          right: 60,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(floatAnimation.value * 6, floatAnimation.value * 8),
-                child: child,
-              );
-            },
-            child: Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF7B61FF).withOpacity(0.15),
-              ),
-            ),
-          ),
-        ),
-        // Floating Dot 2
-        Positioned(
-          bottom: 150,
-          left: 40,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(-floatAnimation.value * 8, floatAnimation.value * 5),
-                child: child,
-              );
-            },
-            child: Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF6CA8FF).withOpacity(0.2),
-              ),
-            ),
-          ),
-        ),
-        // Floating Coin 1 (Top Right)
-        Positioned(
-          top: 120,
-          right: 30,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, -floatAnimation.value * 10),
-                child: child,
-              );
-            },
-            child: Opacity(
-              opacity: 0.12,
-              child: Image.asset(
-                'assets/images/3d_coins.png',
-                width: 50,
-                height: 50,
-              ),
-            ),
-          ),
-        ),
-        // Floating Coin 2 (Bottom Left)
-        Positioned(
-          bottom: 240,
-          left: -10,
-          child: AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, floatAnimation.value * 14),
-                child: child,
-              );
-            },
-            child: Opacity(
-              opacity: 0.1,
-              child: Image.asset(
-                'assets/images/3d_coins.png',
-                width: 60,
-                height: 60,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  State<AppleSignInButton> createState() => _AppleSignInButtonState();
 }
 
-class _HeroIllustration extends StatelessWidget {
-  final Animation<double> floatAnimation;
+class _AppleSignInButtonState extends State<AppleSignInButton> with SingleTickerProviderStateMixin {
+  late AnimationController _buttonController;
+  late Animation<double> _buttonScale;
 
-  const _HeroIllustration({required this.floatAnimation});
+  @override
+  void initState() {
+    super.initState();
+    _buttonController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _buttonScale = Tween<double>(begin: 1.0, end: 0.97).animate(
+      CurvedAnimation(parent: _buttonController, curve: Curves.easeIn),
+    );
+  }
+
+  @override
+  void dispose() {
+    _buttonController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 180,
-      child: Stack(
-        alignment: Alignment.center,
-        clipBehavior: Clip.none,
-        children: [
-          // Glow Blob Behind (Purple)
-          Positioned(
-            top: 20,
-            child: Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFF7B61FF).withOpacity(0.3),
-                    const Color(0xFF7B61FF).withOpacity(0.0),
-                  ],
-                ),
+    return GestureDetector(
+      onTapDown: (_) => widget.isLoading || widget.onPressed == null ? null : _buttonController.forward(),
+      onTapUp: (_) {
+        _buttonController.reverse();
+        if (widget.onPressed != null) widget.onPressed!();
+      },
+      onTapCancel: () => _buttonController.reverse(),
+      child: ScaleTransition(
+        scale: _buttonScale,
+        child: Container(
+          height: 56,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: const Color(0xFF111827), // Apple black
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF111827).withOpacity(0.15),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
               ),
+            ],
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
             ),
           ),
-          // Glow Blob Behind (Blue)
-          Positioned(
-            top: 40,
-            left: 100,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFF6CA8FF).withOpacity(0.25),
-                    const Color(0xFF6CA8FF).withOpacity(0.0),
-                  ],
-                ),
-              ),
-            ),
+          child: Center(
+            child: widget.isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.apple_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Sign in with Apple',
+                        style: GoogleFonts.plusJakartaSans(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
-          
-          // Coin Stack (Left/Bottom)
-          Positioned(
-            left: 40,
-            bottom: 20,
-            child: AnimatedBuilder(
-              animation: floatAnimation,
-              builder: (context, child) {
-                return Transform.translate(
-                  offset: Offset(0, floatAnimation.value * 12),
-                  child: child,
-                );
-              },
-              child: Image.asset(
-                'assets/images/3d_coins.png',
-                width: 70,
-                height: 70,
-                fit: BoxFit.contain,
-              ),
-            ),
-          ),
-
-          // Blue Wallet (Right/Bottom)
-          Positioned(
-            right: 50,
-            bottom: 10,
-            child: AnimatedBuilder(
-              animation: floatAnimation,
-              builder: (context, child) {
-                return Transform.translate(
-                  offset: Offset(0, -floatAnimation.value * 10),
-                  child: child,
-                );
-              },
-              child: Image.asset(
-                'assets/images/3d_blue_wallet.png',
-                width: 75,
-                height: 75,
-                fit: BoxFit.contain,
-              ),
-            ),
-          ),
-
-          // Main Center Piece: People Sharing Expenses (Central/Top)
-          AnimatedBuilder(
-            animation: floatAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, floatAnimation.value * -6),
-                child: child,
-              );
-            },
-            child: Image.asset(
-              'assets/images/3d_people.png',
-              width: 130,
-              height: 130,
-              fit: BoxFit.contain,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

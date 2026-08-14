@@ -17,6 +17,7 @@ class LedgerTransaction {
   final String status; // 'pending', 'completed'
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String source; // 'personal' or 'group'
 
   const LedgerTransaction({
     required this.transactionId,
@@ -35,6 +36,7 @@ class LedgerTransaction {
     required this.status,
     required this.createdAt,
     required this.updatedAt,
+    this.source = 'personal',
   });
 
   LedgerTransaction copyWith({
@@ -54,6 +56,7 @@ class LedgerTransaction {
     String? status,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? source,
   }) {
     return LedgerTransaction(
       transactionId: transactionId ?? this.transactionId,
@@ -72,6 +75,7 @@ class LedgerTransaction {
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      source: source ?? this.source,
     );
   }
 
@@ -93,6 +97,7 @@ class LedgerTransaction {
       'status': status,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'source': source,
     };
   }
 
@@ -125,6 +130,7 @@ class LedgerTransaction {
       status: map['status'] ?? 'pending',
       createdAt: parseDate(map['createdAt']),
       updatedAt: parseDate(map['updatedAt']),
+      source: map['source'] ?? 'group',
     );
   }
 }

@@ -8,6 +8,7 @@ import '../../domain/models/cycle_stats.dart';
 import '../../domain/models/cycle_report.dart';
 import '../../domain/repositories/groups_repository.dart';
 import '../../data/repositories/firebase_groups_repository.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 final groupsRepositoryProvider = Provider<GroupsRepository>((ref) {
   return FirebaseGroupsRepository();
@@ -46,9 +47,15 @@ class GroupsListState {
 }
 
 // ── Internal stream provider ──────────────────────────────────────────────────
-// Subscribes directly to Firestore.  Widgets should NOT watch this directly;
-// instead watch [groupsListProvider] which wraps it in a [GroupsListState].
-final _groupsStreamProvider = StreamProvider<List<Group>>((ref) {
+// Subscribes directly to Firestore. Watches authNotifierProvider so it
+// automatically re-subscribes with the new user's UID when the account changes.
+// Widgets should NOT watch this directly; instead watch [groupsListProvider].
+final _groupsStreamProvider = StreamProvider.autoDispose<List<Group>>((ref) {
+  // Watch auth state so this stream is recreated whenever the user changes.
+  final authState = ref.watch(authNotifierProvider);
+  final userId = authState.user?.id;
+  if (userId == null) return Stream.value([]);
+
   final repository = ref.watch(groupsRepositoryProvider);
   return repository.watchGroups();
 });
@@ -161,6 +168,10 @@ class GroupsListNotifier extends StateNotifier<GroupsListState> {
     await _ref.read(groupsRepositoryProvider).leaveGroup(groupId, userId);
   }
 
+  Future<void> deleteGroup(String groupId) async {
+    await _ref.read(groupsRepositoryProvider).deleteGroup(groupId);
+  }
+
   Future<void> updateGroupImage(String groupId, String? groupImage) async {
     await _ref.read(groupsRepositoryProvider).updateGroupImage(groupId, groupImage);
   }
@@ -174,13 +185,13 @@ class GroupsListNotifier extends StateNotifier<GroupsListState> {
 ///   ```
 /// continue to work without changes.  The state now updates automatically
 /// whenever the user's nests change in Firestore.
-final groupsListProvider = StateNotifierProvider<GroupsListNotifier, GroupsListState>((ref) {
+final groupsListProvider = StateNotifierProvider.autoDispose<GroupsListNotifier, GroupsListState>((ref) {
   return GroupsListNotifier(ref);
 });
 
 
 // Provider for specific group detail
-final groupDetailProvider = StreamProvider.family<Group, String>((ref, id) {
+final groupDetailProvider = StreamProvider.autoDispose.family<Group, String>((ref, id) {
   final firestore = FirebaseFirestore.instance;
   final user = FirebaseAuth.instance.currentUser;
 

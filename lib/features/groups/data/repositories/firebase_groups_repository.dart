@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import '../../domain/models/group.dart';
 import '../../domain/repositories/groups_repository.dart';
+import '../../../activity/data/services/notification_writer.dart';
 
 class FirebaseGroupsRepository implements GroupsRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -130,7 +132,34 @@ class FirebaseGroupsRepository implements GroupsRepository {
           final List<Group> groups = [];
           for (final doc in querySnap.docs) {
             final membersSnap = await doc.reference.collection('members').get();
-            groups.add(_docToGroup(doc, membersSnap, user.uid));
+            
+            // Self-healing: if corrupted 'user_me' exists, delete it
+            bool hasCorruptedData = false;
+            for (final memberDoc in membersSnap.docs) {
+              final data = memberDoc.data();
+              if (data['id'] == 'user_me' || memberDoc.id == 'user_me') {
+                try {
+                  await memberDoc.reference.delete();
+                  final memberIdsList = List<dynamic>.from(doc.data()['memberIds'] ?? []);
+                  memberIdsList.remove('user_me');
+                  await doc.reference.update({
+                    'memberIds': memberIdsList,
+                    'memberCount': memberIdsList.length,
+                  });
+                  hasCorruptedData = true;
+                  debugPrint('Self-healed corrupted user_me data in nest: ${doc.id}');
+                } catch (e) {
+                  debugPrint('Self-healing failed: $e');
+                }
+              }
+            }
+            
+            // Re-fetch members if we healed data
+            final finalMembersSnap = hasCorruptedData 
+                ? await doc.reference.collection('members').get() 
+                : membersSnap;
+                
+            groups.add(_docToGroup(doc, finalMembersSnap, user.uid));
           }
           return groups;
         });
@@ -265,19 +294,47 @@ class FirebaseGroupsRepository implements GroupsRepository {
         'profileImage': memberPhotoUrl,
       });
     });
+
+    NotificationWriter.sendToGroup(
+      groupId: groupId,
+      title: 'New Member Invited',
+      description: '$memberName was invited to the nest.',
+      type: 'member_joined',
+      relatedItemId: memberId,
+    );
   }
 
   @override
   Future<String> generateInviteCode(String groupId) async {
     final doc = await _firestore.collection('nests').doc(groupId).get();
-    return doc.data()?['inviteCode'] ?? '';
+    var inviteCode = doc.data()?['inviteCode'] as String?;
+    
+    if (inviteCode == null || inviteCode.trim().isEmpty) {
+      // Generate a permanent one for older nests
+      final chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No O, 0, I, 1 to avoid confusion
+      final rand = DateTime.now().millisecondsSinceEpoch;
+      String token = '';
+      var seed = rand;
+      for (int i = 0; i < 6; i++) {
+        token += chars[seed % chars.length];
+        seed = (seed * 48271 + 1) % 2147483647;
+      }
+      inviteCode = token;
+      await _firestore.collection('nests').doc(groupId).update({'inviteCode': inviteCode});
+    }
+    
+    return inviteCode;
   }
 
   @override
   Future<String> generateShareLink(String groupId) async {
-    final doc = await _firestore.collection('nests').doc(groupId).get();
-    final code = doc.data()?['inviteCode'] ?? '';
-    return 'https://splitnest.page.link/join?code=$code';
+    final user = _firebaseAuth.currentUser;
+    if (user == null) throw Exception('Must be logged in to generate invite link.');
+
+    final inviteCode = await generateInviteCode(groupId);
+    
+    // Copy to clipboard is handled by the UI, but we return the link format here
+    return 'https://splitnest.app/join?code=$inviteCode';
   }
 
   @override
@@ -285,10 +342,15 @@ class FirebaseGroupsRepository implements GroupsRepository {
     final user = _firebaseAuth.currentUser;
     final targetId = (userId == 'user_me' && user != null) ? user.uid : userId;
     await _firestore.runTransaction((transaction) async {
+      // 1. ALL READS FIRST
       final nestRef = _firestore.collection('nests').doc(groupId);
       final nestDoc = await transaction.get(nestRef);
       if (!nestDoc.exists) return;
 
+      final userRef = _firestore.collection('users').doc(targetId);
+      final userDoc = await transaction.get(userRef);
+
+      // 2. ALL WRITES AFTER READS
       final data = nestDoc.data()!;
       final List<String> memberIds = List<String>.from(data['memberIds'] ?? []);
       memberIds.remove(targetId);
@@ -301,7 +363,20 @@ class FirebaseGroupsRepository implements GroupsRepository {
 
       final memberRef = nestRef.collection('members').doc(targetId);
       transaction.delete(memberRef);
+
+      // Clear activeNestId if it matches this group
+      if (userDoc.exists && userDoc.data()?['activeNestId'] == groupId) {
+        transaction.update(userRef, {'activeNestId': FieldValue.delete()});
+      }
     });
+
+    NotificationWriter.sendToGroup(
+      groupId: groupId,
+      title: 'Member Removed',
+      description: 'A member was removed from the nest.',
+      type: 'member_removed',
+      relatedItemId: targetId,
+    );
   }
 
   @override
@@ -319,6 +394,36 @@ class FirebaseGroupsRepository implements GroupsRepository {
   @override
   Future<void> leaveGroup(String groupId, String userId) async {
     await removeMember(groupId, userId);
+  }
+
+  @override
+  Future<void> deleteGroup(String groupId) async {
+    final nestRef = _firestore.collection('nests').doc(groupId);
+    
+    // 1. Fetch member IDs before deleting
+    final nestDoc = await nestRef.get();
+    final memberIds = List<String>.from(nestDoc.data()?['memberIds'] ?? []);
+
+    // 2. For every member, clear their activeNestId if it points to this group
+    //    (do this in parallel for speed)
+    final batch = _firestore.batch();
+    for (final uid in memberIds) {
+      final userRef = _firestore.collection('users').doc(uid);
+      // Use a conditional update: only clear if activeNestId matches this group
+      batch.update(userRef, {
+        'activeNestId': FieldValue.delete(),
+      });
+    }
+    try {
+      await batch.commit();
+    } catch (_) {
+      // Best-effort — some users might not have the field, ignore errors
+    }
+
+    // 3. Delete the nest document itself. This triggers the real-time stream
+    //    (groupDetailProvider / createdNestsStreamProvider / watchGroups) for
+    //    ALL members and they will be automatically redirected to the dashboard.
+    await nestRef.delete();
   }
 
   @override

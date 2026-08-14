@@ -1,9 +1,29 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:video_player/video_player.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../../../core/theme/app_colors.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Onboarding State Service
+// ─────────────────────────────────────────────────────────────────────────────
+class OnboardingService {
+  static const String _key = 'hasCompletedOnboarding';
+
+  static Future<bool> hasCompleted() async {
+    // Temporarily always return false so you can test the onboarding screen!
+    return false;
+  }
+
+  static Future<void> markCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_key, true);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main OnboardingScreen Widget
+// ─────────────────────────────────────────────────────────────────────────────
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -14,33 +34,23 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  bool _isNavigating = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _pageController.addListener(() {
-      setState(() {});
-    });
+  void _goNext() {
+    if (_currentPage == 0) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOutCubic,
+      );
+    } else {
+      _finishOnboarding();
+    }
   }
 
-  List<OnboardingSlide> _getSlides(BuildContext context) {
-    return [
-      OnboardingSlide(
-        title: 'Split Expenses,\nElevate Living',
-        description: 'Nest your group bills, compute balances instantly, and enjoy hassle-free shared expenses with flatmates or travel buddies.',
-        icon: Icons.account_balance_wallet_outlined,
-        gradientColor: context.colors.primaryGold,
-        videoPath: 'assets/videos/pinsnap-574771971204515760.mp4',
-      ),
-      OnboardingSlide(
-        title: 'Real-Time\nSettle Up',
-        description: 'Keep track of who owes whom with state-of-the-art fintech summaries. Settle payments seamlessly in a single tap.',
-        icon: Icons.swap_horiz_rounded,
-        gradientColor: context.colors.softBronze,
-        videoPath: 'assets/videos/pinsnap-811703532868767383-story1.mp4',
-      ),
-    ];
+  Future<void> _finishOnboarding() async {
+    await OnboardingService.markCompleted();
+    if (mounted) {
+      context.go('/login');
+    }
   }
 
   @override
@@ -49,318 +59,675 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  void _onPageChanged(int index) {
-    setState(() {
-      _currentPage = index;
-    });
-  }
-
-  void _onSkipPressed() async {
-    setState(() {
-      _isNavigating = true;
-    });
-    await Future.delayed(const Duration(milliseconds: 300));
-    if (mounted) {
-      context.go('/login');
-    }
-  }
-
-  void _onNextPressed(int totalSlides) {
-    if (_currentPage == totalSlides - 1) {
-      _onSkipPressed();
-    } else {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final slides = _getSlides(context);
-    final screenHeight = MediaQuery.of(context).size.height;
-    final topAreaHeight = screenHeight * 0.58;
-
     return Scaffold(
-      backgroundColor: context.colors.background,
+      backgroundColor: const Color(0xFFF8F5FF),
       body: Stack(
         children: [
-          // Top 60% Video Container with curved bottom
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: topAreaHeight,
-            child: ClipPath(
-              clipper: ConvexUpClipper(),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  for (int i = 0; i < slides.length; i++)
-                    if (slides[i].videoPath != null)
-                      _VideoBackgroundWidget(
-                        isVisible: _currentPage == i,
-                        videoPath: slides[i].videoPath!,
-                      ),
-                ],
+          // Soft gradient background
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFDFBFF), Color(0xFFEFE9FF)],
               ),
             ),
           ),
 
-          // Mini brand signature top left
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            left: 24,
-            child: Row(
+          SafeArea(
+            bottom: false,
+            child: Column(
               children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: context.goldGradient,
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.nights_stay_outlined,
-                      size: 12,
-                      color: context.colors.background,
-                    ),
+                // PageView — takes remaining space
+                Expanded(
+                  child: PageView(
+                    controller: _pageController,
+                    onPageChanged: (index) =>
+                        setState(() => _currentPage = index),
+                    children: const [_OnboardingPage1(), _OnboardingPage2()],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  'SPLITNEST',
-                  style: textTheme.labelLarge?.copyWith(
-                    letterSpacing: 2.0,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+
+                // Bottom bar (indicators + button)
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Dot indicators
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(2, (index) {
+                            final isActive = _currentPage == index;
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              height: 6,
+                              width: isActive ? 28 : 6,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(4),
+                                color: isActive
+                                    ? const Color(0xFF7B61FF)
+                                    : const Color(
+                                        0xFF7B61FF,
+                                      ).withValues(alpha: 0.2),
+                              ),
+                            );
+                          }),
+                        ),
+                        const SizedBox(height: 24),
+                        // CTA Button
+                        _AnimatedCTAButton(
+                          label: _currentPage == 0 ? 'Continue' : 'Get Started',
+                          onPressed: _goNext,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
 
-          // Skip button top right
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            right: 24,
-            child: _currentPage < slides.length - 1
-                ? TextButton(
-                    onPressed: _onSkipPressed,
-                    child: Text(
-                      'SKIP',
-                      style: textTheme.labelLarge?.copyWith(
-                        color: Colors.white.withOpacity(0.7),
-                        fontSize: 13,
-                        letterSpacing: 1.0,
+// ─────────────────────────────────────────────────────────────────────────────
+// Page 1 — Split Expenses. Stay Together.
+// ─────────────────────────────────────────────────────────────────────────────
+class _OnboardingPage1 extends StatefulWidget {
+  const _OnboardingPage1();
+
+  @override
+  State<_OnboardingPage1> createState() => _OnboardingPage1State();
+}
+
+class _OnboardingPage1State extends State<_OnboardingPage1>
+    with TickerProviderStateMixin {
+  late AnimationController _bgCtrl;
+  late AnimationController _illustCtrl;
+  late AnimationController _textCtrl;
+  late AnimationController _floatCtrl;
+
+  late Animation<double> _bgFade;
+  late Animation<double> _illustScale;
+  late Animation<double> _illustFade;
+  late Animation<double> _headlineFade;
+  late Animation<Offset> _headlineSlide;
+  late Animation<double> _descFade;
+  late Animation<double> _float;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _bgCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _illustCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _textCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _floatCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(reverse: true);
+
+    _bgFade = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _bgCtrl, curve: Curves.easeIn));
+
+    _illustScale = Tween<double>(
+      begin: 0.88,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _illustCtrl, curve: Curves.easeOutCubic));
+    _illustFade = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _illustCtrl, curve: Curves.easeIn));
+
+    _headlineFade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _textCtrl,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+      ),
+    );
+    _headlineSlide =
+        Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _textCtrl,
+            curve: const Interval(0.0, 0.5, curve: Curves.easeOutCubic),
+          ),
+        );
+    _descFade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _textCtrl,
+        curve: const Interval(0.3, 0.75, curve: Curves.easeIn),
+      ),
+    );
+
+    _float = Tween<double>(
+      begin: -6,
+      end: 6,
+    ).animate(CurvedAnimation(parent: _floatCtrl, curve: Curves.easeInOut));
+
+    _runSequence();
+  }
+
+  Future<void> _runSequence() async {
+    _bgCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 150));
+    _illustCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 350));
+    _textCtrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _bgCtrl.dispose();
+    _illustCtrl.dispose();
+    _textCtrl.dispose();
+    _floatCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final safeTop = MediaQuery.of(context).padding.top;
+
+    return FadeTransition(
+      opacity: _bgFade,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // ── Hero image — fills upper portion edge-to-edge ──────────────
+          Expanded(
+            flex: 11,
+            child: Padding(
+              padding: EdgeInsets.only(top: safeTop + 12),
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_illustCtrl, _floatCtrl]),
+                builder: (context, child) {
+                  return FadeTransition(
+                    opacity: _illustFade,
+                    child: Transform.scale(
+                      scale: _illustScale.value,
+                      child: Transform.translate(
+                        offset: Offset(0, _float.value),
+                        child: child,
                       ),
                     ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-
-          // Overlapping Logo Badge at center of curve
-          Positioned(
-            top: topAreaHeight - 40 - 24, // 24 is half of badge height (48)
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: context.colors.background,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.4),
-                    width: 1.5,
-                  ),
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.auto_awesome,
-                    color: Color(0xFF8B5CF6),
-                    size: 22,
-                  ),
-                ),
+                  );
+                },
+                child: _buildIllustration1(size),
               ),
             ),
           ),
 
-          // Bottom 40% Content Area
-          Positioned(
-            top: topAreaHeight - 15,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SafeArea(
-              top: false,
-              child: AnimatedOpacity(
-                opacity: _isNavigating ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 300),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 36),
-                    // Step Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xFF8B5CF6).withOpacity(0.2),
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        'STEP 0${_currentPage + 1}',
-                        style: textTheme.labelSmall?.copyWith(
-                          color: const Color(0xFF8B5CF6),
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                    ),
-
-                    // Page slider for text content
-                    Expanded(
-                      child: PageView.builder(
-                        controller: _pageController,
-                        itemCount: slides.length,
-                        onPageChanged: _onPageChanged,
-                        itemBuilder: (context, index) {
-                          final slide = slides[index];
-                          
-                          // Calculate the page scroll delta for custom transitions
-                          double pageOffset = 0.0;
-                          if (_pageController.hasClients && _pageController.position.haveDimensions) {
-                            pageOffset = _pageController.page ?? 0.0;
-                          } else {
-                            pageOffset = _currentPage.toDouble();
-                          }
-                          final double delta = index - pageOffset;
-                          
-                          // Custom page transitions: scale down, fade, and translate X slightly (parallax)
-                          final double opacity = (1 - delta.abs() * 1.2).clamp(0.0, 1.0);
-                          final double scale = (1 - delta.abs() * 0.15).clamp(0.85, 1.0);
-                          final double translationX = delta * 150.0;
-                          
-                          return Opacity(
-                            opacity: opacity,
-                            child: Transform(
-                              transform: Matrix4.identity()
-                                ..translate(translationX, 0.0)
-                                ..scale(scale),
-                              alignment: Alignment.center,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    // Slide Title
-                                    Text(
-                                      slide.title,
-                                      textAlign: TextAlign.center,
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w800,
-                                        height: 1.25,
-                                        color: context.colors.textWhite,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    // Slide Description
-                                    Text(
-                                      slide.description,
-                                      textAlign: TextAlign.center,
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500,
-                                        color: context.colors.textSecondary,
-                                        height: 1.6,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    // Footer section (Indicator & Buttons)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 24.0, right: 24.0, bottom: 24.0),
-                      child: SizedBox(
-                        height: 56,
-                        child: Stack(
-                          alignment: Alignment.center,
+          // ── Text section ───────────────────────────────────────────────
+          Expanded(
+            flex: 9,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 20, 28, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Headline
+                  FadeTransition(
+                    opacity: _headlineFade,
+                    child: SlideTransition(
+                      position: _headlineSlide,
+                      child: RichText(
+                        textAlign: TextAlign.center,
+                        text: const TextSpan(
                           children: [
-                            // Page Indicators centered
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(
-                                slides.length,
-                                (index) => AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                                  height: 6,
-                                  width: _currentPage == index ? 24 : 6,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(3),
-                                    color: _currentPage == index
-                                        ? const Color(0xFF8B5CF6)
-                                        : const Color(0xFF8B5CF6).withOpacity(0.2),
-                                  ),
-                                ),
+                            TextSpan(
+                              text: 'Split Expenses.\n',
+                              style: TextStyle(
+                                fontSize: 34,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F172A),
+                                height: 1.2,
+                                letterSpacing: -0.5,
                               ),
                             ),
-                            
-                            // Action Button (arrow in right bottom corner)
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: GestureDetector(
-                                onTap: () => _onNextPressed(slides.length),
-                                child: Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF8B5CF6),
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(0xFF8B5CF6).withOpacity(0.3),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.arrow_forward_rounded,
-                                      color: Colors.white,
-                                      size: 24,
-                                    ),
-                                  ),
-                                ),
+                            TextSpan(
+                              text: 'Stay Together.',
+                              style: TextStyle(
+                                fontSize: 34,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF7B61FF),
+                                height: 1.2,
+                                letterSpacing: -0.5,
                               ),
                             ),
                           ],
                         ),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  // Description
+                  FadeTransition(
+                    opacity: _descFade,
+                    child: const Text(
+                      'Share expenses, split bills and keep everyone on the same page — without the awkward math.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFF64748B),
+                        height: 1.55,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIllustration1(Size size) {
+    // Fill available width, let the image breathe naturally
+    final imgW = size.width;
+    final imgH = size.height * 0.52;
+    return SizedBox(
+      width: imgW,
+      height: imgH,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Soft lavender atmospheric glow
+          Container(
+            width: imgW * 0.75,
+            height: imgH * 0.75,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF7B61FF).withValues(alpha: 0.20),
+                  blurRadius: 80,
+                  spreadRadius: 20,
+                ),
+              ],
+            ),
+          ),
+          // Hero image — edge-to-edge, no box frame
+          Image.asset(
+            'assets/images/onboarding_hero.jpg',
+            width: imgW,
+            height: imgH,
+            fit: BoxFit.cover,
+            alignment: Alignment.bottomCenter,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page 2 — All your expenses. One clear view.
+// ─────────────────────────────────────────────────────────────────────────────
+class _OnboardingPage2 extends StatefulWidget {
+  const _OnboardingPage2();
+
+  @override
+  State<_OnboardingPage2> createState() => _OnboardingPage2State();
+}
+
+class _OnboardingPage2State extends State<_OnboardingPage2>
+    with TickerProviderStateMixin {
+  late AnimationController _illustCtrl;
+  late AnimationController _textCtrl;
+  late AnimationController _featuresCtrl;
+  late AnimationController _floatCtrl;
+
+  late Animation<double> _illustFade;
+  late Animation<double> _illustScale;
+  late Animation<double> _headlineFade;
+  late Animation<Offset> _headlineSlide;
+  late Animation<double> _descFade;
+  late Animation<double> _float;
+
+  late Animation<double> _feature1Fade;
+  late Animation<Offset> _feature1Slide;
+  late Animation<double> _feature2Fade;
+  late Animation<Offset> _feature2Slide;
+  late Animation<double> _feature3Fade;
+  late Animation<Offset> _feature3Slide;
+  late Animation<double> _feature4Fade;
+  late Animation<Offset> _feature4Slide;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _illustCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _textCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _featuresCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    _floatCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat(reverse: true);
+
+    _illustFade = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _illustCtrl, curve: Curves.easeIn));
+    _illustScale = Tween<double>(
+      begin: 0.88,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _illustCtrl, curve: Curves.easeOutCubic));
+
+    _headlineFade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _textCtrl,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+      ),
+    );
+    _headlineSlide =
+        Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _textCtrl,
+            curve: const Interval(0.0, 0.5, curve: Curves.easeOutCubic),
+          ),
+        );
+    _descFade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _textCtrl,
+        curve: const Interval(0.4, 1.0, curve: Curves.easeIn),
+      ),
+    );
+
+    _feature1Fade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _featuresCtrl,
+        curve: const Interval(0.0, 0.4, curve: Curves.easeIn),
+      ),
+    );
+    _feature1Slide =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _featuresCtrl,
+            curve: const Interval(0.0, 0.4, curve: Curves.easeOutCubic),
+          ),
+        );
+    _feature2Fade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _featuresCtrl,
+        curve: const Interval(0.2, 0.6, curve: Curves.easeIn),
+      ),
+    );
+    _feature2Slide =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _featuresCtrl,
+            curve: const Interval(0.2, 0.6, curve: Curves.easeOutCubic),
+          ),
+        );
+    _feature3Fade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _featuresCtrl,
+        curve: const Interval(0.4, 0.8, curve: Curves.easeIn),
+      ),
+    );
+    _feature3Slide =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _featuresCtrl,
+            curve: const Interval(0.4, 0.8, curve: Curves.easeOutCubic),
+          ),
+        );
+    _feature4Fade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _featuresCtrl,
+        curve: const Interval(0.6, 1.0, curve: Curves.easeIn),
+      ),
+    );
+    _feature4Slide =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _featuresCtrl,
+            curve: const Interval(0.6, 1.0, curve: Curves.easeOutCubic),
+          ),
+        );
+
+    _float = Tween<double>(
+      begin: -5,
+      end: 5,
+    ).animate(CurvedAnimation(parent: _floatCtrl, curve: Curves.easeInOut));
+
+    _runSequence();
+  }
+
+  Future<void> _runSequence() async {
+    _illustCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 300));
+    _textCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 200));
+    _featuresCtrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _illustCtrl.dispose();
+    _textCtrl.dispose();
+    _featuresCtrl.dispose();
+    _floatCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    // Larger image + scrollable so feature rows never overflow
+    final imageH = size.height * 0.35;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // ── Hero image ──────────────────────────────────────────────────
+          AnimatedBuilder(
+            animation: Listenable.merge([_illustCtrl, _floatCtrl]),
+            builder: (context, child) => FadeTransition(
+              opacity: _illustFade,
+              child: Transform.scale(
+                scale: _illustScale.value,
+                child: Transform.translate(
+                  offset: Offset(0, _float.value),
+                  child: child,
+                ),
+              ),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Lavender glow
+                Container(
+                  width: size.width * 0.75,
+                  height: imageH,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF7B61FF).withValues(alpha: 0.22),
+                        blurRadius: 70,
+                        spreadRadius: 12,
+                      ),
+                    ],
+                  ),
+                ),
+                ShaderMask(
+                  shaderCallback: (bounds) => const RadialGradient(
+                    center: Alignment.center,
+                    radius: 0.5,
+                    colors: [Colors.black, Colors.transparent],
+                    stops: [0.65, 1.0],
+                  ).createShader(bounds),
+                  blendMode: BlendMode.dstIn,
+                  child: ColorFiltered(
+                    colorFilter: const ColorFilter.mode(
+                      Color(0xFFF8F5FF),
+                      BlendMode.multiply,
+                    ),
+                    child: Image.asset(
+                      'assets/images/onboarding_hero_2.jpg',
+                      height: imageH,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // ── Headline ────────────────────────────────────────────────────
+          FadeTransition(
+            opacity: _headlineFade,
+            child: SlideTransition(
+              position: _headlineSlide,
+              child: Column(
+                children: [
+                  const Text(
+                    'All your expenses.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                      height: 1.15,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFF9B84FF), Color(0xFF7B61FF)],
+                    ).createShader(bounds),
+                    child: const Text(
+                      'One clear view.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        height: 1.15,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // ── Description ─────────────────────────────────────────────────
+          FadeTransition(
+            opacity: _descFade,
+            child: const Text(
+              'Track, split and settle expenses effortlessly with friends, family or anyone you share with.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                color: Color(0xFF64748B),
+                height: 1.5,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── Feature rows ────────────────────────────────────────────────
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF7B61FF).withValues(alpha: 0.07),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    _AnimatedFeatureRow(
+                      fade: _feature1Fade,
+                      slide: _feature1Slide,
+                      icon: Icons.group_work_rounded,
+                      iconColor: const Color(0xFF7B61FF),
+                      iconBg: const Color(0xFFEDE9FF),
+                      title: 'Create Nests',
+                      subtitle: 'Add members and start splitting instantly.',
+                      showDivider: true,
+                    ),
+                    _AnimatedFeatureRow(
+                      fade: _feature2Fade,
+                      slide: _feature2Slide,
+                      icon: Icons.add_circle_outline_rounded,
+                      iconColor: const Color(0xFF10B981),
+                      iconBg: const Color(0xFFD1FAE5),
+                      title: 'Add Expenses',
+                      subtitle: 'Add expenses on the go in just a few taps.',
+                      showDivider: true,
+                    ),
+                    _AnimatedFeatureRow(
+                      fade: _feature3Fade,
+                      slide: _feature3Slide,
+                      icon: Icons.account_balance_wallet_rounded,
+                      iconColor: const Color(0xFFF59E0B),
+                      iconBg: const Color(0xFFFEF3C7),
+                      title: 'Track Balances',
+                      subtitle: 'See who owes, who pays and your net balance.',
+                      showDivider: true,
+                    ),
+                    _AnimatedFeatureRow(
+                      fade: _feature4Fade,
+                      slide: _feature4Slide,
+                      icon: Icons.check_circle_outline_rounded,
+                      iconColor: const Color(0xFF3B82F6),
+                      iconBg: const Color(0xFFDBEAFE),
+                      title: 'Settle Up Easily',
+                      subtitle: 'Smart suggestions to settle up in one click.',
+                      showDivider: false,
+                    ),
                   ],
                 ),
               ),
@@ -372,168 +739,199 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-class OnboardingSlide {
-  final String title;
-  final String description;
+// ─────────────────────────────────────────────────────────────────────────────
+// Animated Feature Row
+// ─────────────────────────────────────────────────────────────────────────────
+class _AnimatedFeatureRow extends StatelessWidget {
+  final Animation<double> fade;
+  final Animation<Offset> slide;
   final IconData icon;
-  final Color gradientColor;
-  final String? videoPath;
+  final Color iconColor;
+  final Color iconBg;
+  final String title;
+  final String subtitle;
+  final bool showDivider;
 
-  OnboardingSlide({
-    required this.title,
-    required this.description,
+  const _AnimatedFeatureRow({
+    required this.fade,
+    required this.slide,
     required this.icon,
-    required this.gradientColor,
-    this.videoPath,
+    required this.iconColor,
+    required this.iconBg,
+    required this.title,
+    required this.subtitle,
+    required this.showDivider,
   });
-}
-
-class _VideoBackgroundWidget extends StatefulWidget {
-  final bool isVisible;
-  final String videoPath;
-
-  const _VideoBackgroundWidget({
-    required this.isVisible,
-    required this.videoPath,
-  });
-
-  @override
-  State<_VideoBackgroundWidget> createState() => _VideoBackgroundWidgetState();
-}
-
-class _VideoBackgroundWidgetState extends State<_VideoBackgroundWidget> {
-  late VideoPlayerController _controller;
-  bool _isInitialized = false;
-  bool _hasError = false;
-
-  @override
-  void initState() {
-    super.initState();
-    debugPrint('🎥 [VideoBackground] Initializing video: ${widget.videoPath}');
-    // Premium cinematic background
-    _controller = VideoPlayerController.asset(widget.videoPath);
-    
-    _controller.initialize().then((_) {
-      debugPrint('🎥 [VideoBackground] Initialization complete: ${widget.videoPath}');
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-        _controller.setVolume(0);
-        _controller.setLooping(true);
-        if (widget.isVisible) {
-          debugPrint('🎥 [VideoBackground] Auto-playing: ${widget.videoPath}');
-          _controller.play();
-        }
-      }
-    }).catchError((error) {
-      debugPrint('🎥 [VideoBackground] ERROR loading video: $error');
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-        });
-      }
-    });
-
-    _controller.addListener(() {
-      if (_controller.value.hasError) {
-        debugPrint('🎥 [VideoBackground] Playback ERROR: ${_controller.value.errorDescription}');
-        if (mounted && !_hasError) {
-          setState(() {
-            _hasError = true;
-          });
-        }
-      }
-    });
-  }
-
-  @override
-  void didUpdateWidget(_VideoBackgroundWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isVisible != oldWidget.isVisible) {
-      if (widget.isVisible && _isInitialized && !_hasError) {
-        debugPrint('🎥 [VideoBackground] Resuming playback: ${widget.videoPath}');
-        _controller.play();
-      } else if (!_hasError) {
-        debugPrint('🎥 [VideoBackground] Pausing playback: ${widget.videoPath}');
-        _controller.pause();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    if (_hasError) {
-      // Fallback image/container when video fails to load
-      return Container(
-        color: context.colors.background,
-        child: Center(
-          child: Icon(Icons.videocam_off_rounded, color: context.colors.primaryGold.withOpacity(0.3), size: 64),
-        ),
-      );
-    }
-
-    if (!_isInitialized) {
-      // Loading indicator while initializing
-      return Container(
-        color: context.colors.background,
-        child: Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(context.colors.primaryGold),
-          ),
-        ),
-      );
-    }
-
-    return AnimatedOpacity(
-      opacity: widget.isVisible ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 500),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _controller.value.size.width,
-              height: _controller.value.size.height,
-              child: VideoPlayer(_controller),
+    return FadeTransition(
+      opacity: fade,
+      child: SlideTransition(
+        position: slide,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Icon(icon, color: iconColor, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w400,
+                            color: Color(0xFF94A3B8),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            if (showDivider)
+              const Divider(
+                height: 1,
+                indent: 72,
+                endIndent: 16,
+                color: Color(0xFFF1F5F9),
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class ConvexUpClipper extends CustomClipper<Path> {
+// ─────────────────────────────────────────────────────────────────────────────
+// Animated CTA Button
+// ─────────────────────────────────────────────────────────────────────────────
+class _AnimatedCTAButton extends StatefulWidget {
+  final String label;
+  final VoidCallback onPressed;
+
+  const _AnimatedCTAButton({required this.label, required this.onPressed});
+
   @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height);
-    
-    // Curves smoothly upwards towards the center
-    final controlPoint = Offset(size.width / 2, size.height - 40);
-    final endPoint = Offset(size.width, size.height);
-    
-    path.quadraticBezierTo(
-      controlPoint.dx,
-      controlPoint.dy,
-      endPoint.dx,
-      endPoint.dy,
+  State<_AnimatedCTAButton> createState() => _AnimatedCTAButtonState();
+}
+
+class _AnimatedCTAButtonState extends State<_AnimatedCTAButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pressCtrl;
+  late Animation<double> _pressScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _pressCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+      reverseDuration: const Duration(milliseconds: 200),
     );
-    
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
+    _pressScale = Tween<double>(
+      begin: 1.0,
+      end: 0.96,
+    ).animate(CurvedAnimation(parent: _pressCtrl, curve: Curves.easeIn));
   }
 
   @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
-}
+  void dispose() {
+    _pressCtrl.dispose();
+    super.dispose();
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _pressCtrl.forward(),
+      onTapUp: (_) async {
+        await _pressCtrl.reverse();
+        widget.onPressed();
+      },
+      onTapCancel: () => _pressCtrl.reverse(),
+      child: AnimatedBuilder(
+        animation: _pressCtrl,
+        builder: (context, child) =>
+            Transform.scale(scale: _pressScale.value, child: child),
+        child: Container(
+          width: double.infinity,
+          height: 56,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF9B84FF), Color(0xFF7B61FF)],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF7B61FF).withValues(alpha: 0.35),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Center(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: Row(
+                key: ValueKey(widget.label),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  if (widget.label == 'Get Started') ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Colors.white,
+                        size: 15,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

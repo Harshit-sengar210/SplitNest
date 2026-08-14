@@ -465,9 +465,12 @@ class _GroupHeaderCard extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          Text(value,
-              style: GoogleFonts.plusJakartaSans(
-                  color: valueColor, fontWeight: FontWeight.bold, fontSize: 15)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(value,
+                style: GoogleFonts.plusJakartaSans(
+                    color: valueColor, fontWeight: FontWeight.bold, fontSize: 15)),
+          ),
           const SizedBox(height: 2),
           Text(label,
               style:

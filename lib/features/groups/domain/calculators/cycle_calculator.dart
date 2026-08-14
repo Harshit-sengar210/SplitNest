@@ -43,11 +43,30 @@ class CycleCalculator {
     required int memberCount,
   }) {
     double totalExpenses = 0.0;
+    double totalSelfShares = 0.0;
+
     for (final exp in expenses) {
-      totalExpenses += (exp['amount'] as num?)?.toDouble() ?? 0.0;
+      final amt = (exp['amount'] as num?)?.toDouble() ?? 0.0;
+      totalExpenses += amt;
+
+      final paidBy = exp['paidByUserId'] ?? exp['paidBy'];
+      final splits = exp['splits'] as List<dynamic>?;
+      
+      if (splits != null && splits.isNotEmpty) {
+        for (final split in splits) {
+          if (split is Map<String, dynamic>) {
+            final splitUserId = split['memberId'] ?? split['userId'];
+            if (splitUserId != null && splitUserId == paidBy) {
+              totalSelfShares += (split['amount'] as num?)?.toDouble() ?? 0.0;
+            }
+          }
+        }
+      } else if (memberCount > 0) {
+        totalSelfShares += amt / memberCount;
+      }
     }
 
-    double totalSettled = 0.0;
+    double totalSettled = totalSelfShares;
     for (final set in settlements) {
       totalSettled += (set['amount'] as num?)?.toDouble() ?? 0.0;
     }

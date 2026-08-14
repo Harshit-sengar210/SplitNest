@@ -36,5 +36,7 @@ abstract class GroupsRepository {
   
   Future<void> leaveGroup(String groupId, String userId);
 
+  Future<void> deleteGroup(String groupId);
+
   Future<void> updateGroupImage(String groupId, String? groupImage);
 }

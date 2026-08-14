@@ -168,6 +168,8 @@ class ExpensesService {
         final memberId = split['memberId'] as String;
         final splitId = _firestore.collection('nests').doc(nestId).collection('expenses').doc(expenseId).collection('splits').doc().id;
         
+        final isSelfShare = memberId == expenseData['paidBy'];
+
         final newSplit = {
           ...split,
           'splitId': splitId,
@@ -176,9 +178,9 @@ class ExpensesService {
           'paidBy': expenseData['paidBy'],
           'paidByName': expenseData['paidByName'],
           'originalShare': split['amount'],
-          'settledAmount': 0.0,
-          'pendingAmount': split['amount'],
-          'status': 'pending',
+          'settledAmount': isSelfShare ? split['amount'] : 0.0,
+          'pendingAmount': isSelfShare ? 0.0 : split['amount'],
+          'status': isSelfShare ? 'completed' : 'pending',
           'updatedAt': FieldValue.serverTimestamp(),
           'memberName': split['memberName'] ?? 'Someone',
         };
@@ -201,9 +203,19 @@ class ExpensesService {
         transaction: transaction,
       );
 
-      final double current = (nestDataTx['totalExpense'] as num?)?.toDouble() ?? 0.0;
+      final double currentExp = (nestDataTx['totalExpense'] as num?)?.toDouble() ?? 0.0;
+      final double currentSettled = (nestDataTx['totalSettled'] as num?)?.toDouble() ?? 0.0;
+      
+      double thisExpenseSelfShare = 0.0;
+      for (final split in splitsData) {
+        if (split['memberId'] == payerId) {
+          thisExpenseSelfShare += (split['amount'] as num?)?.toDouble() ?? 0.0;
+        }
+      }
+
       transaction.update(nestRef, {
-        'totalExpense': current + amount,
+        'totalExpense': currentExp + amount,
+        'totalSettled': currentSettled + thisExpenseSelfShare,
         'updatedAt': FieldValue.serverTimestamp(),
         'lastActivity': FieldValue.serverTimestamp(),
       });

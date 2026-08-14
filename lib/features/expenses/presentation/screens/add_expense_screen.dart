@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_header.dart';
+import '../../../../core/widgets/premium_image_selector.dart';
 import '../providers/expenses_provider.dart';
 import '../../domain/models/expense.dart';
 import '../../../groups/presentation/providers/groups_provider.dart';
@@ -26,6 +27,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
   String _selectedCategory = 'Groceries';
   String _splitMethod = 'Equal'; // 'Equal', 'Exact Amount', 'Percentage', 'Shares'
   String _paidByUserId = 'user_me';
+  String? _billImageUrl;
 
   // State to track selected members for split
   final Map<String, bool> _selectedMembers = {};
@@ -40,6 +42,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
 
   // Success animation state
   bool _showSuccessOverlay = false;
+  bool _isLoading = false;
   late AnimationController _successController;
   late Animation<double> _scaleAnimation;
 
@@ -182,22 +185,13 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
                   child: Form(
                     key: _formKey,
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.only(left: 24.0, right: 24.0, top: 20.0, bottom: 40.0),
+                      padding: const EdgeInsets.only(left: 12.0, right: 12.0, top: 8.0, bottom: 8.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(
-                            'Record a bill and split with your nest instantly.',
-                            style: GoogleFonts.plusJakartaSans(
-                              color: const Color(0xFF6B7280),
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 28),
-
                           // Form Card (Premium White Card)
                           Container(
-                            padding: const EdgeInsets.all(24),
+                            padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(22),
@@ -213,84 +207,188 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 // Group Selector
-                                Text(
-                                  'Select Nest Group',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    color: const Color(0xFF1F2937),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
+                                Text('Nest Group', style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontWeight: FontWeight.bold, fontSize: 13)),
+                                const SizedBox(height: 6),
                                 _buildDropdownWrapper(
                                   icon: Icons.group_work_rounded,
                                   iconColor: const Color(0xFF7B61FF),
                                   child: DropdownButtonHideUnderline(
                                     child: DropdownButton<String>(
                                       value: _selectedGroupId,
-                                      hint: Text('Choose a group', style: GoogleFonts.plusJakartaSans(color: const Color(0xFF9CA3AF), fontSize: 14)),
+                                      hint: Text('Choose a group', style: GoogleFonts.plusJakartaSans(color: const Color(0xFF9CA3AF), fontSize: 13)),
                                       dropdownColor: Colors.white,
                                       isExpanded: true,
                                       icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF7B61FF)),
-                                      items: validGroups.map((group) {
-                                        return DropdownMenuItem(
-                                          value: group.id,
-                                          child: Text(group.name, style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontSize: 14)),
-                                        );
-                                      }).toList(),
+                                      items: validGroups.map((group) => DropdownMenuItem(value: group.id, child: Text(group.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontSize: 13)))).toList(),
                                       onChanged: (val) => _onGroupChanged(val, validGroups),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 20),
+                                const SizedBox(height: 8),
 
-                                // Title Input
-                                PremiumTextField(
-                                  controller: _descriptionController,
-                                  labelText: 'Expense Title',
-                                  hintText: 'Vegetables, Wifi, rent, drinks...',
-                                  prefixIcon: Icons.description_outlined,
-                                  iconColor: const Color(0xFF6CA8FF),
-                                  validator: (val) {
-                                    if (val == null || val.trim().isEmpty) {
-                                      return 'Please enter a title';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 20),
-
-                                // Amount Input
-                                PremiumTextField(
-                                  controller: _amountController,
-                                  labelText: 'Total Amount (₹)',
-                                  hintText: '0.00',
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  prefixIcon: Icons.currency_rupee_rounded,
-                                  iconColor: const Color(0xFF10B981),
-                                  validator: (val) {
-                                    if (val == null || val.trim().isEmpty) {
-                                      return 'Please enter an amount';
-                                    }
-                                    final numVal = double.tryParse(val);
-                                    if (numVal == null || numVal <= 0) {
-                                      return 'Please enter a valid amount greater than 0';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 20),
-
-                                // Category Selector
-                                Text(
-                                  'Category',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    color: const Color(0xFF1F2937),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
+                                // Title and Amount in a Row to save vertical space
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: PremiumTextField(
+                                        controller: _descriptionController,
+                                        labelText: 'Expense Title',
+                                        hintText: 'Vegetables...',
+                                        prefixIcon: Icons.description_outlined,
+                                        iconColor: const Color(0xFF6CA8FF),
+                                        validator: (val) {
+                                          if (val == null || val.trim().isEmpty) return 'Required';
+                                          return null;
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: PremiumTextField(
+                                        controller: _amountController,
+                                        labelText: 'Amount (₹)',
+                                        hintText: '0.00',
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        prefixIcon: Icons.currency_rupee_rounded,
+                                        iconColor: const Color(0xFF10B981),
+                                        validator: (val) {
+                                          if (val == null || val.trim().isEmpty) return 'Required';
+                                          final numVal = double.tryParse(val);
+                                          if (numVal == null || numVal <= 0) return 'Invalid';
+                                          return null;
+                                        },
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 8),
+
+                                // Upload Bill Photo
+                                GestureDetector(
+                                  onTap: () async {
+                                    final url = await PremiumImageSelector.show(context, title: 'Upload Bill Photo', isProfilePicture: false);
+                                    if (url != null) {
+                                      setState(() {
+                                        _billImageUrl = url;
+                                      });
+                                    }
+                                  },
+                                  child: _billImageUrl != null
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(16),
+                                          child: Stack(
+                                            children: [
+                                              Image.network(
+                                                _billImageUrl!,
+                                                width: double.infinity,
+                                                height: 100,
+                                                fit: BoxFit.cover,
+                                              ),
+                                              Positioned.fill(
+                                                child: Container(
+                                                  color: Colors.black.withValues(alpha: 0.3),
+                                                ),
+                                              ),
+                                              Positioned(
+                                                top: 8,
+                                                right: 8,
+                                                child: GestureDetector(
+                                                  onTap: () => setState(() => _billImageUrl = null),
+                                                  child: Container(
+                                                    padding: const EdgeInsets.all(4),
+                                                    decoration: const BoxDecoration(
+                                                      color: Colors.white,
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                    child: const Icon(Icons.close_rounded, color: Colors.black87, size: 16),
+                                                  ),
+                                                ),
+                                              ),
+                                              Positioned(
+                                                bottom: 8,
+                                                left: 8,
+                                                child: Row(
+                                                  children: [
+                                                    const Icon(Icons.check_circle_rounded, color: Colors.white, size: 16),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      'Bill Attached',
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        color: Colors.white,
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      : Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF9FAFB),
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color: const Color(0xFFE5E7EB),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(6),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.black.withValues(alpha: 0.04),
+                                                      blurRadius: 4,
+                                                      offset: const Offset(0, 2),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: const Icon(
+                                                  Icons.receipt_long_rounded,
+                                                  color: Color(0xFF6B7280),
+                                                  size: 16,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      'Upload Bill Photo',
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        color: const Color(0xFF374151),
+                                                        fontSize: 13,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      'Optional receipt image',
+                                                      style: GoogleFonts.plusJakartaSans(
+                                                        color: const Color(0xFF9CA3AF),
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const Icon(Icons.add_photo_alternate_outlined, color: Color(0xFF9CA3AF), size: 18),
+                                            ],
+                                          ),
+                                        ),
+                                ),
+                                const SizedBox(height: 8),
+
+                                // Category Selector
+                                Text('Category', style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontWeight: FontWeight.bold, fontSize: 13)),
+                                const SizedBox(height: 4),
                                 _buildDropdownWrapper(
                                   icon: Icons.category_rounded,
                                   iconColor: const Color(0xFFA78BFA),
@@ -300,41 +398,26 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
                                       dropdownColor: Colors.white,
                                       isExpanded: true,
                                       icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF7B61FF)),
-                                      items: _categories.map((cat) {
-                                        return DropdownMenuItem(
-                                          value: cat,
-                                          child: Text(cat, style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontSize: 14)),
-                                        );
-                                      }).toList(),
-                                      onChanged: (val) {
-                                        if (val != null) setState(() => _selectedCategory = val);
-                                      },
+                                      items: _categories.map((cat) => DropdownMenuItem(value: cat, child: Text(cat, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontSize: 13)))).toList(),
+                                      onChanged: (val) { if (val != null) setState(() => _selectedCategory = val); },
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 20),
-
-                                // Description Input
+                                const SizedBox(height: 8),
+                                
                                 PremiumTextField(
                                   controller: _descriptionTextController,
                                   labelText: 'Description (Optional)',
-                                  hintText: 'Add details or notes...',
+                                  hintText: 'Notes...',
                                   prefixIcon: Icons.notes_rounded,
                                   iconColor: const Color(0xFF9CA3AF),
                                 ),
                                 
                                 if (selectedGroup != null) ...[
-                                  const SizedBox(height: 20),
-                                  // Paid By dropdown
-                                  Text(
-                                    'Paid By',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: const Color(0xFF1F2937),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
                                   const SizedBox(height: 8),
+                                  // Paid By dropdown
+                                  Text('Paid By', style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontWeight: FontWeight.bold, fontSize: 13)),
+                                  const SizedBox(height: 4),
                                   _buildDropdownWrapper(
                                     icon: Icons.person_rounded,
                                     iconColor: const Color(0xFFF59E0B),
@@ -344,30 +427,16 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
                                         dropdownColor: Colors.white,
                                         isExpanded: true,
                                         icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF7B61FF)),
-                                        items: selectedGroup.members.map((m) {
-                                          return DropdownMenuItem(
-                                            value: m.id,
-                                            child: Text(m.id == 'user_me' ? 'You' : m.name, style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontSize: 14)),
-                                          );
-                                        }).toList(),
-                                        onChanged: (val) {
-                                          if (val != null) setState(() => _paidByUserId = val);
-                                        },
+                                        items: selectedGroup.members.map((m) => DropdownMenuItem(value: m.id, child: Text(m.id == 'user_me' ? 'You' : m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontSize: 13)))).toList(),
+                                        onChanged: (val) { if (val != null) setState(() => _paidByUserId = val); },
                                       ),
                                     ),
                                   ),
-
-                                  const SizedBox(height: 24),
-                                  // Split Type dropdown
-                                  Text(
-                                    'Split Type',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: const Color(0xFF1F2937),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
                                   const SizedBox(height: 8),
+
+                                  // Split Type dropdown
+                                  Text('Split Type', style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontWeight: FontWeight.bold, fontSize: 13)),
+                                  const SizedBox(height: 4),
                                   _buildDropdownWrapper(
                                     icon: Icons.call_split_rounded,
                                     iconColor: const Color(0xFF7B61FF),
@@ -377,46 +446,15 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
                                         dropdownColor: Colors.white,
                                         isExpanded: true,
                                         icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF7B61FF)),
-                                        items: const [
-                                          DropdownMenuItem(
-                                            value: 'Equal',
-                                            child: Text('Equal', style: TextStyle(color: Color(0xFF1F2937), fontSize: 14)),
-                                          ),
-                                          DropdownMenuItem(
-                                            value: 'Exact Amount',
-                                            child: Text('Exact Amount', style: TextStyle(color: Color(0xFF1F2937), fontSize: 14)),
-                                          ),
-                                          DropdownMenuItem(
-                                            value: 'Percentage',
-                                            child: Text('Percentage', style: TextStyle(color: Color(0xFF1F2937), fontSize: 14)),
-                                          ),
-                                          DropdownMenuItem(
-                                            value: 'Shares',
-                                            child: Text('Shares', style: TextStyle(color: Color(0xFF1F2937), fontSize: 14)),
-                                          ),
-                                        ],
-                                        onChanged: (val) {
-                                          if (val != null) {
-                                            setState(() {
-                                              _splitMethod = val;
-                                            });
-                                          }
-                                        },
+                                        items: ['Equal', 'Exact Amount', 'Percentage', 'Shares'].map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(color: Color(0xFF1F2937), fontSize: 13)))).toList(),
+                                        onChanged: (val) { if (val != null) setState(() => _splitMethod = val); },
                                       ),
                                     ),
                                   ),
-
-                                  const SizedBox(height: 24),
-                                  // Split With Checklist
-                                  Text(
-                                    'Split With',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: const Color(0xFF1F2937),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
                                   const SizedBox(height: 8),
+                                  
+                                  Text('Split With', style: GoogleFonts.plusJakartaSans(color: const Color(0xFF1F2937), fontWeight: FontWeight.bold, fontSize: 13)),
+                                  const SizedBox(height: 6),
                                   ListView.builder(
                                     shrinkWrap: true,
                                     physics: const NeverScrollableScrollPhysics(),
@@ -477,16 +515,16 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
 
                                   // Display split math details / validation status
                                   if (_totalAmount > 0) ...[
-                                    const SizedBox(height: 16),
+                                    const SizedBox(height: 8),
                                     _buildSplitStatus(),
                                   ],
                                 ],
 
-                                const SizedBox(height: 32),
+                                const SizedBox(height: 16),
                                 // Submit button
                                 PremiumButton(
                                   text: 'CREATE EXPENSE',
-                                  isLoading: false,
+                                  isLoading: _isLoading,
                                   onPressed: _submitExpense,
                                 ),
                               ],
@@ -517,10 +555,10 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE5E7EB), width: 1.5),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Row(
         children: [
           _build3DIcon(icon, iconColor),
@@ -533,8 +571,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
 
   Widget _build3DIcon(IconData icon, Color primaryColor) {
     return Container(
-      width: 38,
-      height: 38,
+      width: 32,
+      height: 32,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         gradient: LinearGradient(
@@ -929,12 +967,22 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
     final total = _totalAmount;
 
     // Build splits list
+    final groups = ref.read(groupsListProvider).groups;
+    final selectedGroup = groups.firstWhere((g) => g.id == _selectedGroupId, orElse: () => throw Exception('Group not found'));
+    final selectedMember = selectedGroup.members.firstWhere((m) => m.id == _paidByUserId, orElse: () => selectedGroup.members.first);
+    final paidByName = selectedMember.id == 'user_me' ? 'You' : selectedMember.name;
+
+    String getMemberName(String id) {
+      final m = selectedGroup.members.firstWhere((m) => m.id == id, orElse: () => selectedGroup.members.first);
+      return m.id == 'user_me' ? 'You' : m.name;
+    }
+
     final splits = <ExpenseSplit>[];
     if (_splitMethod == 'Equal') {
       final share = total / _selectedMembersCount;
       _selectedMembers.forEach((memberId, isSelected) {
         if (isSelected) {
-          splits.add(ExpenseSplit(userId: memberId, amount: share));
+          splits.add(ExpenseSplit(userId: memberId, memberName: getMemberName(memberId), amount: share, paidBy: _paidByUserId, paidByName: paidByName));
         }
       });
     } else if (_splitMethod == 'Exact Amount') {
@@ -951,7 +999,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
       _selectedMembers.forEach((memberId, isSelected) {
         if (isSelected) {
           final amt = double.tryParse(_exactAmountsControllers[memberId]?.text ?? '0') ?? 0.0;
-          splits.add(ExpenseSplit(userId: memberId, amount: amt));
+          splits.add(ExpenseSplit(userId: memberId, memberName: getMemberName(memberId), amount: amt, paidBy: _paidByUserId, paidByName: paidByName));
         }
       });
     } else if (_splitMethod == 'Percentage') {
@@ -969,7 +1017,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
         if (isSelected) {
           final pct = double.tryParse(_percentagesControllers[memberId]?.text ?? '0') ?? 0.0;
           final amt = (pct / 100.0) * total;
-          splits.add(ExpenseSplit(userId: memberId, amount: amt, percentage: pct));
+          splits.add(ExpenseSplit(userId: memberId, memberName: getMemberName(memberId), amount: amt, percentage: pct, paidBy: _paidByUserId, paidByName: paidByName));
         }
       });
     } else if (_splitMethod == 'Shares') {
@@ -987,17 +1035,17 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
         if (isSelected) {
           final shares = double.tryParse(_sharesControllers[memberId]?.text ?? '0') ?? 0.0;
           final amt = (shares / totalShares) * total;
-          splits.add(ExpenseSplit(userId: memberId, amount: amt, shares: shares));
+          splits.add(ExpenseSplit(userId: memberId, memberName: getMemberName(memberId), amount: amt, shares: shares, paidBy: _paidByUserId, paidByName: paidByName));
         }
       });
     }
 
-    final groups = ref.read(groupsListProvider).groups;
-    final selectedGroup = groups.firstWhere((g) => g.id == _selectedGroupId, orElse: () => throw Exception('Group not found'));
-    final selectedMember = selectedGroup.members.firstWhere((m) => m.id == _paidByUserId, orElse: () => selectedGroup.members.first);
-    final paidByName = selectedMember.id == 'user_me' ? 'You' : selectedMember.name;
+
 
     // Call provider to create expense
+    setState(() {
+      _isLoading = true;
+    });
     final notifier = ref.read(expensesProvider(_selectedGroupId!).notifier);
     notifier.createExpense(
       title: _descriptionController.text.trim(),
@@ -1007,11 +1055,13 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
       paidByUserId: _paidByUserId,
       splits: splits,
       splitMethod: _splitMethod,
-      description: _descriptionTextController.text.trim().isEmpty ? null : _descriptionTextController.text.trim(),
+      description: _descriptionTextController.text.trim().isNotEmpty ? _descriptionTextController.text.trim() : null,
+      imageUrl: _billImageUrl,
       paidByName: paidByName,
     ).then((_) {
       // Trigger Success Animation overlay
       setState(() {
+        _isLoading = false;
         _showSuccessOverlay = true;
       });
       _successController.forward();
@@ -1019,20 +1069,25 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
       // Delay then navigate back/reset
       Future.delayed(const Duration(milliseconds: 1800), () {
         if (mounted) {
-          setState(() {
-            _showSuccessOverlay = false;
-            _amountController.clear();
-            _descriptionController.clear();
-            _descriptionTextController.clear();
-            _selectedGroupId = null;
-            _disposeControllers();
-            _selectedMembers.clear();
-            _splitMethod = 'Equal';
-          });
-          _successController.reset();
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            setState(() {
+              _showSuccessOverlay = false;
+              _amountController.clear();
+              _descriptionController.clear();
+              _descriptionTextController.clear();
+              _selectedMembers.forEach((key, _) => _selectedMembers[key] = true);
+            });
+            // Try going to dashboard to refresh state if possible, though it might be a no-op if already there.
+            context.go('/dashboard');
+          }
         }
       });
     }).catchError((e) {
+      setState(() {
+        _isLoading = false;
+      });
       _showSnackBarError(e.toString());
     });
   }
@@ -1099,6 +1154,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> with Ticker
               const SizedBox(height: 28),
               Text(
                 'Expense Logged!',
+                textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   color: const Color(0xFF1F2937),
                   fontSize: 24,
@@ -1195,7 +1251,7 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
           duration: const Duration(milliseconds: 200),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: hasError
                   ? Colors.red.shade400
@@ -1214,7 +1270,7 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
               ),
             ],
           ),
-          padding: const EdgeInsets.only(left: 14, right: 14, top: 4, bottom: 4),
+          padding: const EdgeInsets.only(left: 10, right: 10, top: 0, bottom: 0),
           child: TextFormField(
             controller: widget.controller,
             focusNode: _focusNode,
@@ -1257,6 +1313,7 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
                 color: const Color(0xFF9CA3AF),
                 fontSize: 14,
               ),
+              isDense: true,
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,
@@ -1264,12 +1321,12 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
               focusedErrorBorder: InputBorder.none,
               errorStyle: const TextStyle(height: 0.1, color: Colors.transparent),
               prefixIcon: Padding(
-                padding: const EdgeInsets.only(right: 12.0),
+                padding: const EdgeInsets.only(right: 10.0),
                 child: _build3DIcon(widget.prefixIcon, widget.iconColor),
               ),
               prefixIconConstraints: const BoxConstraints(
-                minWidth: 42,
-                minHeight: 42,
+                minWidth: 32,
+                minHeight: 32,
               ),
               suffixIcon: widget.isPassword
                   ? IconButton(
@@ -1308,8 +1365,8 @@ class _PremiumTextFieldState extends State<PremiumTextField> {
 
   Widget _build3DIcon(IconData icon, Color primaryColor) {
     return Container(
-      width: 38,
-      height: 38,
+      width: 32,
+      height: 32,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         gradient: LinearGradient(
@@ -1423,8 +1480,8 @@ class _PremiumButtonState extends State<PremiumButton> with TickerProviderStateM
                     width: 24,
                     height: 24,
                     child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      color: Colors.white,
+                      strokeWidth: 3,
                     ),
                   )
                 : Text(

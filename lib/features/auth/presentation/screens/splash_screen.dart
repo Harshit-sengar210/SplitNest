@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../providers/auth_provider.dart';
+import 'onboarding_screen.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -12,402 +12,447 @@ class SplashScreen extends ConsumerStatefulWidget {
   ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  
-  // Animation timings
-  late Animation<double> _appearanceAnimation; // 0.0 -> 0.3
-  late Animation<double> _splitAnimation;      // 0.3 -> 0.7
-  late Animation<double> _successAnimation;    // 0.7 -> 0.85
-  late Animation<double> _brandFadeAnimation;  // 0.8 -> 1.0
+class _SplashScreenState extends ConsumerState<SplashScreen>
+    with TickerProviderStateMixin {
+  // ── Background fade-in ───────────────────────────────────────────────────
+  late AnimationController _bgCtrl;
+  late Animation<double> _bgFade;
+
+  // ── Logo entrance ────────────────────────────────────────────────────────
+  late AnimationController _logoEntryCtrl;
+  late Animation<double> _logoFade;
+  late Animation<double> _logoScale;
+
+  // ── Heartbeat (lub-dub) ──────────────────────────────────────────────────
+  late AnimationController _heartbeatCtrl;
+  late Animation<double> _heartScale;
+
+  // ── Ripple rings ─────────────────────────────────────────────────────────
+  late AnimationController _ripple1Ctrl;
+  late Animation<double> _ripple1Scale;
+  late Animation<double> _ripple1Opacity;
+
+  late AnimationController _ripple2Ctrl;
+  late Animation<double> _ripple2Scale;
+  late Animation<double> _ripple2Opacity;
+
+  // ── Text reveal ──────────────────────────────────────────────────────────
+  late AnimationController _textCtrl;
+  late Animation<double> _nameOpacity;
+  late Animation<Offset> _nameSlide;
+  late Animation<double> _taglineOpacity;
+
+  // ── Subtle idle float ────────────────────────────────────────────────────
+  late AnimationController _floatCtrl;
+  late Animation<double> _float;
+
+  bool _isNavigating = false;
+  bool _animationComplete = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _setupAnimations();
+    _runSequence();
+  }
+
+  void _setupAnimations() {
+    // Background
+    _bgCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3200),
+      duration: const Duration(milliseconds: 400),
+    );
+    _bgFade = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _bgCtrl, curve: Curves.easeIn));
+
+    // Logo entry
+    _logoEntryCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _logoFade = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _logoEntryCtrl, curve: Curves.easeOut));
+    _logoScale = Tween<double>(begin: 0.75, end: 1.0).animate(
+      CurvedAnimation(parent: _logoEntryCtrl, curve: Curves.easeOutBack),
     );
 
-    _appearanceAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+    // Heartbeat: lub (big) → dub (smaller) using TweenSequence
+    _heartbeatCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _heartScale = TweenSequence<double>([
+      // Lub — quick expand
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.0,
+          end: 1.12,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 20,
+      ),
+      // Return
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.12,
+          end: 0.97,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 15,
+      ),
+      // Dub — smaller expand
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.97,
+          end: 1.06,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 20,
+      ),
+      // Settle back
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.06,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 45,
+      ),
+    ]).animate(_heartbeatCtrl);
+
+    // Ripple 1 — triggered on lub
+    _ripple1Ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _ripple1Scale = Tween<double>(
+      begin: 0.6,
+      end: 2.2,
+    ).animate(CurvedAnimation(parent: _ripple1Ctrl, curve: Curves.easeOut));
+    _ripple1Opacity = Tween<double>(
+      begin: 0.55,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _ripple1Ctrl, curve: Curves.easeOut));
+
+    // Ripple 2 — slightly delayed, triggered on dub
+    _ripple2Ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _ripple2Scale = Tween<double>(
+      begin: 0.6,
+      end: 1.8,
+    ).animate(CurvedAnimation(parent: _ripple2Ctrl, curve: Curves.easeOut));
+    _ripple2Opacity = Tween<double>(
+      begin: 0.40,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _ripple2Ctrl, curve: Curves.easeOut));
+
+    // Text reveal: name + tagline staggered
+    _textCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _nameOpacity = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.25, curve: Curves.easeOutBack),
+        parent: _textCtrl,
+        curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
+      ),
+    );
+    _nameSlide = Tween<Offset>(begin: const Offset(0, 0.35), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _textCtrl,
+            curve: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
+          ),
+        );
+    _taglineOpacity = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _textCtrl,
+        curve: const Interval(0.45, 1.0, curve: Curves.easeIn),
       ),
     );
 
-    _splitAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.25, 0.65, curve: Curves.easeInOutQuad),
-      ),
-    );
-
-    _successAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.65, 0.8, curve: Curves.elasticOut),
-      ),
-    );
-
-    _brandFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.78, 1.0, curve: Curves.easeIn),
-      ),
-    );
-
-    _controller.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        setState(() {
-          _isAnimationDone = true;
-        });
-        _checkNavigation();
-      }
-    });
-    _controller.forward();
+    // Idle float after everything settles
+    _floatCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    _float = Tween<double>(
+      begin: -15,
+      end: 15,
+    ).animate(CurvedAnimation(parent: _floatCtrl, curve: Curves.easeInOut));
   }
 
-  bool _isAnimationDone = false;
+  Future<void> _runSequence() async {
+    // 0.00s — background appears
+    _bgCtrl.forward();
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _checkNavigation() {
+    // 0.15s — logo fades/scales in
+    await Future.delayed(const Duration(milliseconds: 150));
     if (!mounted) return;
-    if (!_isAnimationDone) return;
-    
+    _logoEntryCtrl.forward();
+
+    // 0.40s — first heartbeat (lub)
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    _heartbeatCtrl.forward();
+    _ripple1Ctrl.forward(); // ripple fires with lub
+
+    // 0.65s — second ripple fires with dub
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    _ripple2Ctrl.forward();
+
+    // 1.35s — "SplitNest" begins appearing
+    await Future.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    _textCtrl.forward();
+
+    // 1.8s — hold completed splash, then navigate
+    await Future.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+
+    setState(() => _animationComplete = true);
+    _checkNavigation();
+  }
+
+  void _checkNavigation() async {
+    if (!mounted || _isNavigating || !_animationComplete) return;
+
     final authState = ref.read(authNotifierProvider);
     if (authState.isLoading) return;
-    
+
+    _isNavigating = true;
+
+    // Graceful hold before navigating
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+
     final user = authState.user;
     if (user != null) {
+      // Already logged in → go to home
       if (user.activeNestId == null) {
         context.go('/welcome');
       } else {
         context.go('/dashboard');
       }
     } else {
-      context.go('/login');
+      final hasSeenOnboarding = await OnboardingService.hasCompleted();
+      if (!mounted) return;
+      if (hasSeenOnboarding) {
+        context.go('/login');
+      } else {
+        context.go('/onboarding');
+      }
     }
   }
 
   @override
+  void dispose() {
+    _bgCtrl.dispose();
+    _logoEntryCtrl.dispose();
+    _heartbeatCtrl.dispose();
+    _ripple1Ctrl.dispose();
+    _ripple2Ctrl.dispose();
+    _textCtrl.dispose();
+    _floatCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    ref.listen<AuthState>(authNotifierProvider, (previous, next) {
-      if (!next.isLoading) {
-        _checkNavigation();
-      }
+    // React to auth state changes
+    ref.listen<AuthState>(authNotifierProvider, (_, next) {
+      if (!next.isLoading) _checkNavigation();
     });
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // 3 avatar endpoints relative to the center of stack
-    final avatarOffsets = [
-      const Offset(0, -110),     // Person 1 (Top)
-      const Offset(-95, 75),     // Person 2 (Bottom Left)
-      const Offset(95, 75),      // Person 3 (Bottom Right)
-    ];
-
-    final avatarImages = [
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80',
-      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=150&q=80',
-    ];
+    final size = MediaQuery.of(context).size;
+    final logoSize = size.width * 0.60;
 
     return Scaffold(
-      backgroundColor: context.colors.background,
-      body: Stack(
-        children: [
-          // Background soft ambient glows
-          Positioned(
-            top: -150,
-            left: -150,
-            child: Container(
-              width: 400,
-              height: 400,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.08),
-                    blurRadius: 120,
-                    spreadRadius: 40,
-                  ),
-                ],
-              ),
+      backgroundColor: const Color(0xFFF8F5FF),
+      body: FadeTransition(
+        opacity: _bgFade,
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment.center,
+              radius: 1.2,
+              colors: [
+                Color(0xFFFEFCFF), // Near-white center
+                Color(0xFFF0E9FF), // Soft lavender edge
+              ],
+              stops: [0.0, 1.0],
             ),
           ),
-          Positioned(
-            bottom: -150,
-            right: -150,
-            child: Container(
-              width: 400,
-              height: 400,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.08),
-                    blurRadius: 120,
-                    spreadRadius: 40,
+          child: SafeArea(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // ── Logo + Ripple Stack ─────────────────────────────────────
+                AnimatedBuilder(
+                  animation: _floatCtrl,
+                  builder: (context, child) => Transform.translate(
+                    offset: Offset(0, _float.value),
+                    child: child,
                   ),
-                ],
-              ),
-            ),
-          ),
-
-          // Main animation canvas
-          Center(
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, child) {
-                final showBrand = _brandFadeAnimation.value > 0.0;
-                
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Canvas containing bill-split visualization
-                    SizedBox(
-                      width: 320,
-                      height: 320,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // 1. Connection lines (from center to avatars)
-                          for (int i = 0; i < avatarOffsets.length; i++)
-                            CustomPaint(
-                              painter: _LinePainter(
-                                start: Offset.zero,
-                                end: avatarOffsets[i],
-                                progress: _splitAnimation.value,
-                              ),
-                            ),
-
-                          // 2. The Avatars
-                          for (int i = 0; i < avatarOffsets.length; i++)
-                            Positioned(
-                              left: 160 + avatarOffsets[i].dx - 32,
-                              top: 160 + avatarOffsets[i].dy - 32,
-                              child: Transform.scale(
-                                scale: _appearanceAnimation.value,
-                                child: Container(
-                                  width: 64,
-                                  height: 64,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.15),
-                                        blurRadius: 12,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                    border: Border.all(
-                                      color: const Color(0xFF8B5CF6).withOpacity(0.3),
-                                      width: 2,
-                                    ),
-                                    image: DecorationImage(
-                                      image: NetworkImage(avatarImages[i]),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                          // 3. Central Receipt Card
-                          Positioned(
+                  child: SizedBox(
+                    width: logoSize + 80,
+                    height: logoSize + 80,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // ── Ripple 1 (outer, triggered with lub) ───────────
+                        AnimatedBuilder(
+                          animation: _ripple1Ctrl,
+                          builder: (context, _) => Opacity(
+                            opacity: _ripple1Opacity.value,
                             child: Transform.scale(
-                              scale: _appearanceAnimation.value * (1.0 - _successAnimation.value * 0.1),
-                              child: Opacity(
-                                opacity: 1.0 - _successAnimation.value * 0.8,
-                                child: Container(
-                                  width: 58,
-                                  height: 72,
-                                  decoration: BoxDecoration(
-                                    color: isDark ? const Color(0xFF1E1E28) : Colors.white,
-                                    borderRadius: BorderRadius.circular(10),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.12),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                    border: Border.all(
-                                      color: const Color(0xFF8B5CF6).withOpacity(0.2),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      // Mock Receipt lines
-                                      Container(height: 5, width: 28, color: const Color(0xFF8B5CF6).withOpacity(0.4)),
-                                      Container(height: 4, width: 40, color: Colors.grey.withOpacity(0.3)),
-                                      Container(height: 4, width: 34, color: Colors.grey.withOpacity(0.3)),
-                                      const Divider(height: 4, thickness: 1),
-                                      Align(
-                                        alignment: Alignment.bottomRight,
-                                        child: Container(height: 5, width: 18, color: const Color(0xFF8B5CF6)),
-                                      ),
-                                    ],
+                              scale: _ripple1Scale.value,
+                              child: Container(
+                                width: logoSize,
+                                height: logoSize,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(0xFF7B61FF),
+                                    width: 1.5,
                                   ),
                                 ),
                               ),
                             ),
                           ),
+                        ),
 
-                          // 4. Flying Coins (Slide from center to avatars)
-                          if (_splitAnimation.value > 0.0 && _splitAnimation.value < 1.0)
-                            for (int i = 0; i < avatarOffsets.length; i++)
-                              Positioned(
-                                left: 160 + (avatarOffsets[i].dx * _splitAnimation.value) - 12,
-                                top: 160 + (avatarOffsets[i].dy * _splitAnimation.value) - 12,
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF8B5CF6),
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Color(0xFF8B5CF6),
-                                        blurRadius: 8,
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.add,
-                                      size: 14,
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                        // ── Ripple 2 (inner, triggered with dub) ───────────
+                        AnimatedBuilder(
+                          animation: _ripple2Ctrl,
+                          builder: (context, _) => Opacity(
+                            opacity: _ripple2Opacity.value,
+                            child: Transform.scale(
+                              scale: _ripple2Scale.value,
+                              child: Container(
+                                width: logoSize * 0.8,
+                                height: logoSize * 0.8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: const Color(
+                                    0xFF7B61FF,
+                                  ).withValues(alpha: 0.08),
                                 ),
                               ),
+                            ),
+                          ),
+                        ),
 
-                          // 5. Success Checkmark in center (appears when split completes)
-                          if (_successAnimation.value > 0.0)
-                            Positioned(
+                        // ── Ambient glow (always visible, soft) ────────────
+                        Container(
+                          width: logoSize * 0.85,
+                          height: logoSize * 0.85,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF7B61FF,
+                                ).withValues(alpha: 0.14),
+                                blurRadius: 60,
+                                spreadRadius: 12,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // ── S Logo (heartbeat scale, on top) ───────────────
+                        AnimatedBuilder(
+                          animation: Listenable.merge([
+                            _logoEntryCtrl,
+                            _heartbeatCtrl,
+                          ]),
+                          builder: (context, child) {
+                            final entryScale = _logoScale.value;
+                            final hbScale = _heartbeatCtrl.isAnimating
+                                ? _heartScale.value
+                                : 1.0;
+                            return FadeTransition(
+                              opacity: _logoFade,
                               child: Transform.scale(
-                                scale: _successAnimation.value,
-                                child: Container(
-                                  width: 64,
-                                  height: 64,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF10B981),
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Color(0xFF10B981),
-                                        blurRadius: 16,
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.check_rounded,
-                                      color: Colors.white,
-                                      size: 36,
-                                    ),
-                                  ),
-                                ),
+                                scale: entryScale * hbScale,
+                                child: child,
                               ),
-                            ),
-                        ],
-                      ),
+                            );
+                          },
+                          child: Image.asset(
+                            'assets/images/app_icon.png',
+                            width: logoSize,
+                            height: logoSize,
+                            fit: BoxFit.contain,
+                            // PNG is transparent — no color/filter applied
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 36),
-                    
-                    // 6. Brand Name & Slogan (Fades in dynamically)
-                    Opacity(
-                      opacity: _brandFadeAnimation.value,
-                      child: Column(
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+
+                // ── Brand Name & Tagline ────────────────────────────────────
+                FadeTransition(
+                  opacity: _nameOpacity,
+                  child: SlideTransition(
+                    position: _nameSlide,
+                    child: RichText(
+                      textAlign: TextAlign.center,
+                      text: const TextSpan(
                         children: [
-                          Text(
-                            'SPLITNEST',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 32,
+                          TextSpan(
+                            text: 'Split',
+                            style: TextStyle(
+                              fontSize: 34,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 4.0,
-                              color: const Color(0xFF8B5CF6),
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.5,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'SHARED EXPENSES. ELEVATED.',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 3.0,
-                              color: context.colors.textSecondary,
+                          TextSpan(
+                            text: 'Nest',
+                            style: TextStyle(
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF7B61FF),
+                              letterSpacing: -0.5,
                             ),
                           ),
-                          if (_isAnimationDone && ref.watch(authNotifierProvider).isLoading) ...[
-                            const SizedBox(height: 24),
-                            const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.0,
-                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)),
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                     ),
-                  ],
-                );
-              },
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                FadeTransition(
+                  opacity: _taglineOpacity,
+                  child: const Text(
+                    'Split Smart, Live Easy.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF94A3B8),
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
-  }
-}
-
-class _LinePainter extends CustomPainter {
-  final Offset start;
-  final Offset end;
-  final double progress;
-
-  _LinePainter({
-    required this.start,
-    required this.end,
-    required this.progress,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF8B5CF6).withOpacity(0.18)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    final path = Path();
-    path.moveTo(size.width / 2 + start.dx, size.height / 2 + start.dy);
-    
-    // Draw the connection line dynamically as progress updates
-    final currentEnd = Offset(
-      size.width / 2 + end.dx * progress,
-      size.height / 2 + end.dy * progress,
-    );
-    path.lineTo(currentEnd.dx, currentEnd.dy);
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _LinePainter oldDelegate) {
-    return oldDelegate.progress != progress;
   }
 }

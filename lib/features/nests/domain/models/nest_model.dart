@@ -19,6 +19,9 @@ class NestModel {
   final DateTime? lastActivity;
   final bool isArchived;
   final List<String> memberIds;
+  final int settlementCycleDate;
+  final DateTime? customStartDate;
+  final DateTime? customEndDate;
 
   const NestModel({
     required this.nestId,
@@ -38,6 +41,9 @@ class NestModel {
     this.lastActivity,
     this.isArchived = false,
     this.memberIds = const [],
+    this.settlementCycleDate = 1,
+    this.customStartDate,
+    this.customEndDate,
   });
 
   NestModel copyWith({
@@ -60,6 +66,9 @@ class NestModel {
     DateTime? lastActivity,
     bool? isArchived,
     List<String>? memberIds,
+    int? settlementCycleDate,
+    DateTime? customStartDate,
+    DateTime? customEndDate,
   }) {
     return NestModel(
       nestId: nestId ?? this.nestId,
@@ -79,6 +88,9 @@ class NestModel {
       lastActivity: lastActivity ?? this.lastActivity,
       isArchived: isArchived ?? this.isArchived,
       memberIds: memberIds ?? this.memberIds,
+      settlementCycleDate: settlementCycleDate ?? this.settlementCycleDate,
+      customStartDate: customStartDate ?? this.customStartDate,
+      customEndDate: customEndDate ?? this.customEndDate,
     );
   }
 
@@ -107,6 +119,9 @@ class NestModel {
       lastActivity: (map['lastActivity'] as Timestamp?)?.toDate(),
       isArchived: map['isArchived'] ?? false,
       memberIds: memberIdsRaw != null ? List<String>.from(memberIdsRaw) : [map['createdBy'] ?? ''],
+      settlementCycleDate: map['settlementCycleDate'] ?? 1,
+      customStartDate: (map['customStartDate'] as Timestamp?)?.toDate(),
+      customEndDate: (map['customEndDate'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -128,6 +143,9 @@ class NestModel {
       'lastActivity': FieldValue.serverTimestamp(), // Always updated to server timestamp on write
       'isArchived': isArchived,
       'memberIds': memberIds,
+      'settlementCycleDate': settlementCycleDate,
+      'customStartDate': customStartDate != null ? Timestamp.fromDate(customStartDate!) : null,
+      'customEndDate': customEndDate != null ? Timestamp.fromDate(customEndDate!) : null,
     };
   }
 
@@ -151,7 +169,10 @@ class NestModel {
         other.currentCycleId == currentCycleId &&
         other.lastActivity == lastActivity &&
         other.isArchived == isArchived &&
-        listEquals(other.memberIds, memberIds);
+        listEquals(other.memberIds, memberIds) &&
+        other.settlementCycleDate == settlementCycleDate &&
+        other.customStartDate == customStartDate &&
+        other.customEndDate == customEndDate;
   }
 
   @override
@@ -174,6 +195,9 @@ class NestModel {
       lastActivity,
       isArchived,
       Object.hashAll(memberIds),
+      settlementCycleDate,
+      customStartDate,
+      customEndDate,
     ]);
   }
 }

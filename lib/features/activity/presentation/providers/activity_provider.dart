@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/repositories/activity_repository.dart';
 import '../../data/repositories/firebase_activity_repository.dart';
-import '../../../../core/providers/database_provider.dart';
+
 
 // ─── Repository Provider ──────────────────────────────────────────────────────
 
@@ -113,9 +113,6 @@ final globalActivitiesProvider =
     StateNotifierProvider<GlobalActivityNotifier, ActivityState>((ref) {
   final repo = ref.watch(activityRepositoryProvider);
   final notifier = GlobalActivityNotifier(repo);
-  ref.listen(databaseChangeProvider, (previous, next) {
-    notifier.loadActivities();
-  });
   return notifier;
 });
 

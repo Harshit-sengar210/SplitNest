@@ -1,15 +1,25 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/models/ledger_transaction.dart';
 import '../../domain/models/ledger_summary.dart';
 import '../../domain/repositories/ledger_repository.dart';
+import '../../../activity/data/services/notification_writer.dart';
 
 class FirebaseLedgerRepository implements LedgerRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  String _resolveUserId(String userId) {
+    if (userId == 'user_me') {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      return currentUser?.uid ?? userId;
+    }
+    return userId;
+  }
+
   CollectionReference _transactionsRef(String userId) {
     return _firestore
         .collection('users')
-        .doc(userId)
+        .doc(_resolveUserId(userId))
         .collection('ledger')
         .doc('transactions')
         .collection('transactions');
@@ -18,7 +28,7 @@ class FirebaseLedgerRepository implements LedgerRepository {
   DocumentReference _summaryRef(String userId) {
     return _firestore
         .collection('users')
-        .doc(userId)
+        .doc(_resolveUserId(userId))
         .collection('ledger')
         .doc('summary');
   }
@@ -31,6 +41,7 @@ class FirebaseLedgerRepository implements LedgerRepository {
         .map((snapshot) {
       return snapshot.docs
           .map((doc) => LedgerTransaction.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+          .where((tx) => tx.source == 'personal')
           .toList();
     });
   }
@@ -51,6 +62,16 @@ class FirebaseLedgerRepository implements LedgerRepository {
     final updatedTx = transaction.copyWith(transactionId: docRef.id);
     await docRef.set(updatedTx.toMap());
     await _recalculateAndSaveSummary(transaction.userId);
+
+    if (transaction.personUserId != null && transaction.personUserId!.isNotEmpty) {
+      NotificationWriter.sendToUser(
+        targetUserId: transaction.personUserId!,
+        title: 'New Ledger Entry',
+        description: 'A ${transaction.type} entry of ₹${transaction.amount.toStringAsFixed(0)} was added involving you.',
+        type: 'payment_request',
+        relatedItemId: docRef.id,
+      );
+    }
   }
 
   @override
@@ -59,6 +80,16 @@ class FirebaseLedgerRepository implements LedgerRepository {
         .doc(transaction.transactionId)
         .set(transaction.toMap());
     await _recalculateAndSaveSummary(transaction.userId);
+
+    if (transaction.status == 'completed' && transaction.personUserId != null && transaction.personUserId!.isNotEmpty) {
+      NotificationWriter.sendToUser(
+        targetUserId: transaction.personUserId!,
+        title: 'Ledger Entry Completed',
+        description: 'The ${transaction.type} entry of ₹${transaction.amount.toStringAsFixed(0)} was marked as completed.',
+        type: 'payment_received',
+        relatedItemId: transaction.transactionId,
+      );
+    }
   }
 
   @override
@@ -77,6 +108,13 @@ class FirebaseLedgerRepository implements LedgerRepository {
     for (final doc in snapshot.docs) {
       final data = doc.data() as Map<String, dynamic>?;
       if (data == null) continue;
+      
+      final source = data['source'] as String? ?? 'group';
+      if (source != 'personal') continue;
+      
+      final status = (data['status'] as String? ?? 'pending').toLowerCase();
+      if (status != 'completed') continue;
+
       final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
       final type = (data['type'] as String? ?? '').toLowerCase();
 

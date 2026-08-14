@@ -10,6 +10,9 @@ abstract class NestRepository {
     List<String>? inviteEmails,
     List<String>? inviteUsernames,
     List<String>? invitePhones,
+    int settlementCycleDate = 1,
+    DateTime? customStartDate,
+    DateTime? customEndDate,
   });
 
   Future<NestModel?> getNest(String nestId);

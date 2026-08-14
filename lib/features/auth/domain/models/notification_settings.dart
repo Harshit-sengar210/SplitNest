@@ -5,6 +5,7 @@ class NotificationSettings {
   final bool chatAlerts;
   final bool memberAlerts;
   final bool groupAlerts;
+  final bool weeklySummaryAlerts;
 
   const NotificationSettings({
     required this.userId,
@@ -13,6 +14,7 @@ class NotificationSettings {
     this.chatAlerts = true,
     this.memberAlerts = true,
     this.groupAlerts = true,
+    this.weeklySummaryAlerts = false,
   });
 
   NotificationSettings copyWith({
@@ -22,6 +24,7 @@ class NotificationSettings {
     bool? chatAlerts,
     bool? memberAlerts,
     bool? groupAlerts,
+    bool? weeklySummaryAlerts,
   }) {
     return NotificationSettings(
       userId: userId ?? this.userId,
@@ -30,6 +33,7 @@ class NotificationSettings {
       chatAlerts: chatAlerts ?? this.chatAlerts,
       memberAlerts: memberAlerts ?? this.memberAlerts,
       groupAlerts: groupAlerts ?? this.groupAlerts,
+      weeklySummaryAlerts: weeklySummaryAlerts ?? this.weeklySummaryAlerts,
     );
   }
 
@@ -41,6 +45,7 @@ class NotificationSettings {
       'chatAlerts': chatAlerts,
       'memberAlerts': memberAlerts,
       'groupAlerts': groupAlerts,
+      'weeklySummaryAlerts': weeklySummaryAlerts,
     };
   }
 
@@ -52,6 +57,7 @@ class NotificationSettings {
       chatAlerts: map['chatAlerts'] ?? true,
       memberAlerts: map['memberAlerts'] ?? true,
       groupAlerts: map['groupAlerts'] ?? true,
+      weeklySummaryAlerts: map['weeklySummaryAlerts'] ?? false,
     );
   }
 }

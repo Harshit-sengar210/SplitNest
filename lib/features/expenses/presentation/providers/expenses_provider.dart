@@ -3,13 +3,13 @@ import '../../domain/models/expense.dart';
 import '../../domain/repositories/expenses_repository.dart';
 import '../../data/repositories/firebase_expenses_repository.dart';
 import '../../data/services/expenses_service.dart';
-import '../../../../core/providers/database_provider.dart';
+
 
 final expensesServiceProvider = Provider<ExpensesService>((ref) {
   return ExpensesService();
 });
 
-final expensesRepositoryProvider = Provider<ExpensesRepository>((ref) {
+final expensesRepositoryProvider = Provider.autoDispose<ExpensesRepository>((ref) {
   final service = ref.watch(expensesServiceProvider);
   return FirebaseExpensesRepository(service);
 });
@@ -64,6 +64,7 @@ class ExpensesNotifier extends StateNotifier<ExpensesState> {
     String? description,
     String? currency,
     String? paidByName,
+    String? imageUrl,
   }) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
@@ -78,6 +79,7 @@ class ExpensesNotifier extends StateNotifier<ExpensesState> {
         description: description,
         currency: currency,
         paidByName: paidByName,
+        imageUrl: imageUrl,
       );
       
       final rawList = [newExpense, ...state.expenses];
@@ -113,18 +115,15 @@ final expensesProvider = StateNotifierProvider.family<ExpensesNotifier, Expenses
   final repository = ref.watch(expensesRepositoryProvider);
   final notifier = ExpensesNotifier(repository);
   notifier.loadExpenses(groupId);
-  ref.listen(databaseChangeProvider, (previous, next) {
-    notifier.loadExpenses(groupId);
-  });
   return notifier;
 });
 
-final nestExpensesStreamProvider = StreamProvider.family<List<Expense>, String>((ref, groupId) {
+final nestExpensesStreamProvider = StreamProvider.autoDispose.family<List<Expense>, String>((ref, groupId) {
   final repository = ref.watch(expensesRepositoryProvider);
   return repository.streamExpenses(groupId);
 });
 
-final singleExpenseStreamProvider = StreamProvider.family<Expense, ({String groupId, String expenseId})>((ref, arg) {
+final singleExpenseStreamProvider = StreamProvider.autoDispose.family<Expense, ({String groupId, String expenseId})>((ref, arg) {
   final repository = ref.watch(expensesRepositoryProvider);
   return repository.streamExpenseById(arg.groupId, arg.expenseId);
 });

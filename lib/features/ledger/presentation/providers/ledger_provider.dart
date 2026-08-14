@@ -16,11 +16,40 @@ final ledgerTransactionsProvider = StreamProvider<List<LedgerTransaction>>((ref)
   return ref.watch(ledgerRepositoryProvider).streamTransactions(userId);
 });
 
-final ledgerSummaryProvider = StreamProvider<LedgerSummary?>((ref) {
-  final authState = ref.watch(authNotifierProvider);
-  final userId = authState.user?.id;
-  if (userId == null) return const Stream.empty();
-  return ref.watch(ledgerRepositoryProvider).streamSummary(userId);
+final ledgerSummaryProvider = Provider<AsyncValue<LedgerSummary>>((ref) {
+  final txsAsync = ref.watch(ledgerTransactionsProvider);
+  
+  return txsAsync.whenData((txs) {
+    double totalIncome = 0.0;
+    double totalExpense = 0.0;
+    double totalLend = 0.0;
+    double totalBorrow = 0.0;
+
+    for (final tx in txs) {
+      if (tx.status != 'completed') continue;
+      final type = tx.type.toLowerCase();
+      if (type == 'income') {
+        totalIncome += tx.amount;
+      } else if (type == 'expense') {
+        totalExpense += tx.amount;
+      } else if (type == 'lend') {
+        totalLend += tx.amount;
+      } else if (type == 'borrow') {
+        totalBorrow += tx.amount;
+      }
+    }
+
+    final netBalance = totalIncome - totalExpense + totalLend - totalBorrow;
+
+    return LedgerSummary(
+      totalIncome: totalIncome,
+      totalExpense: totalExpense,
+      totalLend: totalLend,
+      totalBorrow: totalBorrow,
+      netBalance: netBalance,
+      updatedAt: DateTime.now(),
+    );
+  });
 });
 
 class LedgerController {

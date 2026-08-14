@@ -1,26 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_header.dart';
+import '../../../auth/presentation/providers/notification_settings_provider.dart';
+import '../../../auth/domain/models/notification_settings.dart';
 
-class PushAlertsScreen extends StatefulWidget {
+class PushAlertsScreen extends ConsumerStatefulWidget {
   const PushAlertsScreen({super.key});
 
   @override
-  State<PushAlertsScreen> createState() => _PushAlertsScreenState();
+  ConsumerState<PushAlertsScreen> createState() => _PushAlertsScreenState();
 }
 
-class _PushAlertsScreenState extends State<PushAlertsScreen> with TickerProviderStateMixin {
-  final Map<String, bool> _alerts = {
-    'Expense Added': true,
-    'Settlement Received': true,
-    'Group Chat Messages': false,
-    'Member Joined Group': true,
-    'Group Updates': true,
-    'Weekly Summary': false,
-  };
-
+class _PushAlertsScreenState extends ConsumerState<PushAlertsScreen> with TickerProviderStateMixin {
   final Map<String, String> _examples = {
     'Expense Added': 'e.g. "Rohan added Dinner Splitting to Europe Trip 2026"',
     'Settlement Received': 'e.g. "Aman paid you \$50.00 for Flat Rent"',
@@ -54,6 +48,8 @@ class _PushAlertsScreenState extends State<PushAlertsScreen> with TickerProvider
 
   @override
   Widget build(BuildContext context) {
+    final settingsAsync = ref.watch(notificationSettingsProvider);
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: const AppHeader(
@@ -74,23 +70,46 @@ class _PushAlertsScreenState extends State<PushAlertsScreen> with TickerProvider
           children: [
             _BackgroundShapes(floatAnimation: _floatAnimation),
             SafeArea(
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                itemCount: _alerts.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 16),
-                itemBuilder: (context, index) {
-                  final key = _alerts.keys.elementAt(index);
-                  final value = _alerts[key]!;
-                  final example = _examples[key]!;
+              child: settingsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF7B61FF))),
+                error: (err, stack) => Center(child: Text('Error: \$err')),
+                data: (settings) {
+                  if (settings == null) return const SizedBox.shrink();
 
-                  return _buildToggleCard(
-                    title: key,
-                    example: example,
-                    value: value,
-                    onChanged: (val) {
-                      setState(() {
-                        _alerts[key] = val;
-                      });
+                  final _alerts = {
+                    'Expense Added': settings.expenseAlerts,
+                    'Settlement Received': settings.settlementAlerts,
+                    'Group Chat Messages': settings.chatAlerts,
+                    'Member Joined Group': settings.memberAlerts,
+                    'Group Updates': settings.groupAlerts,
+                    'Weekly Summary': settings.weeklySummaryAlerts,
+                  };
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    itemCount: _alerts.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 16),
+                    itemBuilder: (context, index) {
+                      final key = _alerts.keys.elementAt(index);
+                      final value = _alerts[key]!;
+                      final example = _examples[key]!;
+
+                      return _buildToggleCard(
+                        title: key,
+                        example: example,
+                        value: value,
+                        onChanged: (val) {
+                          NotificationSettings newSettings = settings;
+                          if (key == 'Expense Added') newSettings = settings.copyWith(expenseAlerts: val);
+                          if (key == 'Settlement Received') newSettings = settings.copyWith(settlementAlerts: val);
+                          if (key == 'Group Chat Messages') newSettings = settings.copyWith(chatAlerts: val);
+                          if (key == 'Member Joined Group') newSettings = settings.copyWith(memberAlerts: val);
+                          if (key == 'Group Updates') newSettings = settings.copyWith(groupAlerts: val);
+                          if (key == 'Weekly Summary') newSettings = settings.copyWith(weeklySummaryAlerts: val);
+                          
+                          ref.read(notificationSettingsProvider.notifier).updateSettings(newSettings);
+                        },
+                      );
                     },
                   );
                 },

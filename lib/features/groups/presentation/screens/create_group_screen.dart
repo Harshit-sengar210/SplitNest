@@ -5,8 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/widgets/success_animation.dart';
+import '../../../../core/widgets/premium_image_selector.dart';
 import '../../domain/models/group.dart';
-import '../../../../core/utils/mock_database.dart';
+
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../nests/presentation/providers/nest_provider.dart';
 
@@ -36,6 +37,8 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
   final _emailController = TextEditingController();
   final _usernameController = TextEditingController();
   final _phoneController = TextEditingController();
+
+  String? _uploadedImageUrl;
 
   InviteMethod _selectedInviteMethod = InviteMethod.email;
   final List<PendingInvite> _pendingInvites = [];
@@ -207,10 +210,13 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
         description: _descriptionController.text.trim(),
         category: _selectedNestType.typeName,
         currency: 'INR',
-        coverImage: _selectedNestType.asset,
+        coverImage: _uploadedImageUrl ?? _selectedNestType.asset,
         inviteEmails: inviteEmails,
         inviteUsernames: inviteUsernames,
         invitePhones: invitePhones,
+        settlementCycleDate: _selectedCycleDate,
+        customStartDate: _useCustomRange ? _customRangeStart : null,
+        customEndDate: _useCustomRange ? _customRangeEnd : null,
       );
 
       // Update the activeNestId in the auth notifier
@@ -444,11 +450,14 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
             Expanded(
               child: FadeTransition(
                 opacity: _fadeAnim,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                   child: Form(
                     key: _formKey,
-                    child: _buildStepContent(),
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: _buildStepContent(),
+                    ),
                   ),
                 ),
               ),
@@ -512,6 +521,47 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
       children: [
         const SizedBox(height: 20),
 
+        // Upload Cover Image
+        Center(
+          child: GestureDetector(
+            onTap: () async {
+              if (_isCreating) return;
+              final url = await PremiumImageSelector.show(context, title: 'Nest Cover');
+              if (url != null && mounted) {
+                setState(() {
+                  _uploadedImageUrl = url;
+                });
+              }
+            },
+            child: Container(
+              width: 75,
+              height: 75,
+              decoration: BoxDecoration(
+                color: _kCard,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                image: _uploadedImageUrl != null 
+                    ? DecorationImage(image: NetworkImage(_uploadedImageUrl!), fit: BoxFit.cover)
+                    : null,
+              ),
+              child: _uploadedImageUrl == null 
+                  ? const Icon(Icons.add_a_photo_rounded, color: _kPurple, size: 28)
+                  : null,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Center(
+          child: Text('Upload Cover', style: TextStyle(color: _kSub, fontSize: 12, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(height: 20),
+
         // Input card for name & description
         Container(
           decoration: BoxDecoration(
@@ -570,32 +620,32 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
         ),
         const SizedBox(height: 18),
 
-        // Grid of 3D selectable cards (🏠 Home, 🏢 Flat, 💼 Office, ✈️ Travel, 👨👩👧 Family)
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _nestTypes.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 14,
-            childAspectRatio: 1.1,
-          ),
-          itemBuilder: (context, index) {
-            final option = _nestTypes[index];
+        // Grid of 3D selectable cards (🏠 Home, 🏢 Flat, 💼 Office, ✈️ Travel, 👨‍👩‍👧 Family)
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          alignment: WrapAlignment.center,
+          children: _nestTypes.map((option) {
             final isSelected = _selectedNestType == option;
-            return _3DNestTypeCard(
-              option: option,
-              isSelected: isSelected,
-              onTap: () {
-                if (!_isCreating) {
-                  setState(() {
-                    _selectedNestType = option;
-                  });
-                }
-              },
+            return SizedBox(
+              width: (MediaQuery.of(context).size.width - 40 - 24) / 3, // Fits 3 in a row
+              height: 110,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: _3DNestTypeCard(
+                  option: option,
+                  isSelected: isSelected,
+                  onTap: () {
+                    if (!_isCreating) {
+                      setState(() {
+                        _selectedNestType = option;
+                      });
+                    }
+                  },
+                ),
+              ),
             );
-          },
+          }).toList(),
         ),
         const SizedBox(height: 24),
       ],
@@ -1287,20 +1337,20 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
     required Widget content,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
+      padding: const EdgeInsets.only(bottom: 10.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: _kPurpleLight,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(color: _kPurple.withOpacity(0.15)),
             ),
-            child: Icon(icon, color: _kPurple, size: 18),
+            child: Icon(icon, color: _kPurple, size: 16),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1308,13 +1358,13 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                 Text(
                   label,
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
+                    fontSize: 10,
                     color: _kSub,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 content,
               ],
             ),
@@ -1329,23 +1379,23 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 20),
+        const SizedBox(height: 8),
         
         // High fidelity 3D Summary Card
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF7C5CBF).withOpacity(0.12),
-                blurRadius: 24,
-                offset: const Offset(0, 12),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
               ),
               BoxShadow(
                 color: Colors.black.withOpacity(0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
               ),
             ],
             border: Border.all(
@@ -1358,9 +1408,9 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
             children: [
               // Header banner with gradient, backdropped orbs, and selected 3D image in micro-animation
               Container(
-                height: 140,
+                height: 90,
                 decoration: const BoxDecoration(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(27)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(19)),
                   gradient: LinearGradient(
                     colors: [
                       Color(0xFFEDE9FA),
@@ -1376,11 +1426,11 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                   children: [
                     // Backdropped Orbs
                     Positioned(
-                      left: -20,
-                      top: -20,
+                      left: -10,
+                      top: -10,
                       child: Container(
-                        width: 90,
-                        height: 90,
+                        width: 60,
+                        height: 60,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: Colors.white.withOpacity(0.5),
@@ -1388,11 +1438,11 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                       ),
                     ),
                     Positioned(
-                      right: 10,
-                      bottom: -10,
+                      right: 5,
+                      bottom: -5,
                       child: Container(
-                        width: 70,
-                        height: 70,
+                        width: 50,
+                        height: 50,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: const Color(0xFF7C5CBF).withOpacity(0.06),
@@ -1401,16 +1451,16 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                     ),
                     // White floating backdrop circle
                     Container(
-                      width: 96,
-                      height: 96,
+                      width: 70,
+                      height: 70,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.white,
                         boxShadow: [
                           BoxShadow(
                             color: const Color(0xFF7C5CBF).withOpacity(0.15),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
@@ -1419,8 +1469,8 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                     _FloatingAnimationWrapper(
                       child: Image.asset(
                         _selectedNestType.asset,
-                        width: 80,
-                        height: 80,
+                        width: 56,
+                        height: 56,
                         fit: BoxFit.contain,
                       ),
                     ),
@@ -1429,7 +1479,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
               ),
               
               Padding(
-                padding: const EdgeInsets.all(24.0),
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1440,7 +1490,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                       content: Text(
                         _nameController.text.trim(),
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.w800,
                           color: _kText,
                         ),
@@ -1455,7 +1505,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                         content: Text(
                           _descriptionController.text.trim(),
                           style: GoogleFonts.plusJakartaSans(
-                            fontSize: 14,
+                            fontSize: 13,
                             color: _kText,
                             fontWeight: FontWeight.w500,
                           ),
@@ -1470,13 +1520,13 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                         children: [
                           Text(
                             _selectedNestType.emoji,
-                            style: const TextStyle(fontSize: 16),
+                            style: const TextStyle(fontSize: 14),
                           ),
                           const SizedBox(width: 8),
                           Text(
                             _selectedNestType.label,
                             style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.bold,
                               color: _kText,
                             ),
@@ -1491,10 +1541,10 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                       label: 'SETTLEMENT CYCLE',
                       content: Text(
                         _useCustomRange
-                            ? 'Custom Range: ${DateFormat('d MMM yyyy').format(_customRangeStart)} → ${DateFormat('d MMM yyyy').format(_customRangeEnd)}'
-                            : 'Auto Monthly (Every month on the ${_selectedCycleDate}${_getDaySuffix(_selectedCycleDate)})',
+                            ? 'Custom: ${DateFormat('d MMM').format(_customRangeStart)} → ${DateFormat('d MMM yyyy').format(_customRangeEnd)}'
+                            : 'Auto Monthly (on the ${_selectedCycleDate}${_getDaySuffix(_selectedCycleDate)})',
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
+                          fontSize: 13,
                           fontWeight: FontWeight.bold,
                           color: _kText,
                         ),
@@ -1509,31 +1559,43 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: _kPurpleLight,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: _kPurple.withOpacity(0.2)),
                             ),
                             child: Text(
-                              '${_pendingInvites.length + 1} Nest Members',
+                              '${_pendingInvites.length + 1} Members',
                               style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: _kPurpleDark,
                               ),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          _buildMemberRow('You', 'Admin (Creator)', true),
-                          ..._pendingInvites.map((m) => Padding(
-                                padding: const EdgeInsets.only(top: 8),
+                          const SizedBox(height: 8),
+                          _buildMemberRow('You', 'Admin', true),
+                          ..._pendingInvites.take(2).map((m) => Padding(
+                                padding: const EdgeInsets.only(top: 6),
                                 child: _buildMemberRow(
                                   m.value,
                                   _inviteMethodLabel(m.method),
                                   false,
                                 ),
                               )),
+                          if (_pendingInvites.length > 2)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                '+ ${_pendingInvites.length - 2} more members',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  color: _kSub,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -1543,7 +1605,6 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen>
             ],
           ),
         ),
-        const SizedBox(height: 24),
       ],
     );
   }
@@ -1818,24 +1879,27 @@ class _3DNestTypeCardState extends State<_3DNestTypeCard> {
                   ),
                 ),
               ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    widget.option.emoji,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    widget.option.label,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: widget.isSelected ? _kPurpleDark : _kText,
+              const SizedBox(height: 6),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      widget.option.emoji,
+                      style: const TextStyle(fontSize: 14),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.option.label,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: widget.isSelected ? _kPurpleDark : _kText,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

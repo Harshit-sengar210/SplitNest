@@ -2,51 +2,66 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // Rules for the users collection
-    match /users/{userId} {
-      // Allow any authenticated user to read user profile information
-      // (This is required so members can see other members' display names/profiles in the group)
-      allow read: if request.auth != null;
-      
-      // Allow writing only if the user is authenticated and is writing their own document
-      allow write: if request.auth != null && request.auth.uid == userId;
-
-      match /ledger/{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
     
-    // Rules for the nests collection
-    match /nests/{nestId} {
-      allow read, write: if request.auth != null;
-      
-      match /expenses/{document=**} {
-        allow read, write: if request.auth != null;
-      }
-      
-      match /Cycle/{document=**} {
-        allow read, write: if request.auth != null;
-      }
-      
-      match /timeline/{document=**} {
-        allow read, write: if request.auth != null;
-      }
-      
-      match /Chats/{document=**} {
-        allow read, write: if request.auth != null;
-      }
-      
-      match /settlements/{settlementId} {
-        allow read: if request.auth != null;
-        allow create, update: if request.auth != null && request.resource.data.receiverId == request.auth.uid;
-        allow delete: if request.auth != null && resource.data.receiverId == request.auth.uid;
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // --- USERS COLLECTION ---
+    match /users/{userId} {
+      // Anyone logged in can read a profile (for invites, etc)
+      allow read: if isSignedIn();
+      // Only the actual user can modify their own profile
+      allow write: if isSignedIn() && request.auth.uid == userId;
+
+      // Notifications Subcollection
+      match /notifications/{notificationId} {
+        // Users can read their own notifications
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        // The system (or other users) can write notifications to this user
+        allow write: if isSignedIn();
       }
     }
 
-    // Default fallback: Deny all other reads/writes
+    // --- NESTS (GROUPS) COLLECTION ---
+    match /nests/{nestId} {
+      // You can read/update a nest if you are in the memberIds array
+      allow read, update, delete: if isSignedIn() && (request.auth.uid in resource.data.memberIds);
+      // You can create a nest as long as you add yourself to the memberIds
+      allow create: if isSignedIn() && (request.auth.uid in request.resource.data.memberIds);
+
+      // Subcollections inside Nests
+      // For MVP, if a user is authenticated, they can interact with nest subcollections.
+      // (A stricter rule would read the parent doc's memberIds, but that costs an extra read per query).
+      match /members/{document=**} {
+        allow read, write: if isSignedIn();
+      }
+      match /expenses/{document=**} {
+        allow read, write: if isSignedIn();
+      }
+      match /settlements/{document=**} {
+        allow read, write: if isSignedIn();
+      }
+      match /Cycle/{document=**} {
+        allow read, write: if isSignedIn();
+      }
+      match /messages/{document=**} {
+        allow read, write: if isSignedIn();
+      }
+      match /timeline/{document=**} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // --- COLLECTION GROUP QUERIES ---
+    // If you use collectionGroup('settlements') anywhere:
+    match /{path=**}/settlements/{settlementId} {
+      allow read: if isSignedIn();
+    }
+
+    // --- FALLBACK ---
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if isSignedIn();
     }
   }
 }

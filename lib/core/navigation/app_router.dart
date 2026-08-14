@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/screens/splash_screen.dart';
 import '../../features/auth/presentation/screens/onboarding_screen.dart';
@@ -10,9 +11,25 @@ import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/welcome_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
+import '../../features/website/presentation/layout/website_shell.dart';
+import '../../features/website/presentation/screens/website_home_screen.dart';
+import '../../features/website/presentation/screens/website_splash_screen.dart';
+import '../../features/groups/presentation/screens/nest_invitation_screen.dart';
+import '../../features/website/presentation/screens/website_invite_screen.dart';
+// Website Pages
+import '../../features/website/presentation/screens/website_placeholder_screen.dart';
+import '../../features/website/presentation/screens/website_download_screen.dart';
+import '../../features/website/presentation/screens/website_features_screen.dart';
+import '../../features/website/presentation/screens/website_how_it_works_screen.dart';
+import '../../features/website/presentation/screens/website_nests_screen.dart';
+import '../../features/website/presentation/screens/website_ledger_screen.dart';
+import '../../features/website/presentation/screens/website_about_screen.dart';
+import '../../features/website/presentation/screens/website_faq_screen.dart';
 import '../../features/dashboard/presentation/screens/calendar_screen.dart';
 import '../../features/activity/presentation/screens/notifications_screen.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
+import '../services/pending_invite_service.dart';
+import '../notifications/notification_router.dart';
 import '../../features/groups/presentation/screens/create_group_screen.dart';
 import '../../features/groups/presentation/screens/group_detail_screen.dart';
 import '../../features/groups/presentation/screens/cycle_screen.dart';
@@ -33,8 +50,10 @@ import '../../features/profile/presentation/screens/payment_methods_screen.dart'
 import '../../features/ledger/presentation/screens/ledger_screen.dart';
 import '../../features/ledger/presentation/screens/add_ledger_transaction_screen.dart';
 import '../../features/ledger/presentation/screens/ledger_transaction_detail_screen.dart';
+import '../../features/ledger/presentation/screens/ledger_history_screen.dart';
 import '../../features/balances/presentation/screens/balances_screen.dart';
 import '../../features/chat/presentation/screens/group_chat_screen.dart';
+import '../../features/website/presentation/screens/website_privacy_screen.dart';
 
 class GoRouterRefreshStream extends ChangeNotifier {
   late final StreamSubscription<dynamic> _subscription;
@@ -53,15 +72,45 @@ class GoRouterRefreshStream extends ChangeNotifier {
   }
 }
 
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>((ref) {
   final authRepository = ref.watch(authRepositoryProvider);
   
   return GoRouter(
-    initialLocation: '/splash',
+    navigatorKey: rootNavigatorKey,
+    initialLocation: kIsWeb ? '/web-splash' : '/splash',
     refreshListenable: GoRouterRefreshStream(authRepository.authStateChanges),
     redirect: (context, state) async {
-      final isSplash = state.matchedLocation == '/splash';
-      if (isSplash) {
+      final loc = state.uri.toString();
+      if (loc.startsWith('http://') || loc.startsWith('https://')) {
+        try {
+          final uri = Uri.parse(loc);
+          if (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'join') {
+            final code = uri.queryParameters['code'];
+            if (code != null && code.isNotEmpty) {
+              return '/invite/$code';
+            }
+          }
+        } catch (_) {}
+      }
+
+      final isSplash = state.matchedLocation == '/splash' || state.matchedLocation == '/web-splash';
+      final websiteRoutes = [
+        '/website',
+        '/features',
+        '/how-it-works',
+        '/nests',
+        '/personal-ledger',
+        '/download',
+        '/about',
+        '/privacy',
+        '/faq',
+      ];
+      final isWebsite = websiteRoutes.contains(state.matchedLocation);
+      final isInvite = state.matchedLocation.startsWith('/invite');
+      
+      if (isSplash || isWebsite || isInvite) {
         return null;
       }
 
@@ -76,8 +125,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       
       if (user == null) {
         // Let user stay on auth routes, otherwise redirect to login.
-        if (!isAuthRoute) {
-          return '/login';
+        if (!isAuthRoute && !isWebsite) {
+          return kIsWeb ? '/login?autoRedirect=true' : '/login';
         }
         return null;
       }
@@ -86,16 +135,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       final activeNestId = user.activeNestId;
 
       if (isAuthRoute) {
+        // 1. Check for pending notifications first
+        final pendingNotification = NotificationRouter.consumePendingRoute();
+        if (pendingNotification != null) {
+          return pendingNotification;
+        }
+
+        // 2. Check if there is a pending invite
+        final pendingInviteService = ref.read(pendingInviteServiceProvider);
+        final pendingToken = await pendingInviteService.getPendingInvite();
+        if (pendingToken != null && pendingToken.isNotEmpty) {
+          return '/invite/$pendingToken';
+        }
         return '/login-success?isNew=${activeNestId == null}';
       }
 
-      if (activeNestId == null) {
-        if (state.matchedLocation != '/welcome' &&
-            state.matchedLocation != '/groups/create' &&
-            state.matchedLocation != '/login-success') {
-          return '/welcome';
-        }
-      } else {
+      if (activeNestId != null) {
         if (state.matchedLocation == '/welcome') {
           return '/dashboard';
         }
@@ -105,8 +160,74 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(
+        path: '/join',
+        redirect: (context, state) {
+          final code = state.uri.queryParameters['code'];
+          if (code != null && code.isNotEmpty) {
+            return '/invite/$code';
+          }
+          return '/welcome';
+        },
+      ),
+      ShellRoute(
+        builder: (context, state, child) => WebsiteShell(child: child),
+        routes: [
+          GoRoute(
+            path: '/website',
+            builder: (context, state) => const WebsiteHomeScreen(),
+          ),
+          GoRoute(
+            path: '/features',
+            builder: (context, state) => const WebsiteFeaturesScreen(),
+          ),
+          GoRoute(
+            path: '/how-it-works',
+            builder: (context, state) => const WebsiteHowItWorksScreen(),
+          ),
+          GoRoute(
+            path: '/nests',
+            builder: (context, state) => const WebsiteNestsScreen(),
+          ),
+          GoRoute(
+            path: '/personal-ledger',
+            builder: (context, state) => const WebsiteLedgerScreen(),
+          ),
+          GoRoute(
+            path: '/about',
+            builder: (context, state) => const WebsiteAboutScreen(),
+          ),
+          GoRoute(
+            path: '/faq',
+            builder: (context, state) => const WebsiteFaqScreen(),
+          ),
+          GoRoute(
+            path: '/download',
+            builder: (context, state) => const WebsiteDownloadScreen(),
+          ),
+          GoRoute(
+            path: '/privacy',
+            builder: (context, state) => const WebsitePrivacyScreen(),
+          ),
+        ],
+      ),
+      GoRoute(
         path: '/splash',
         builder: (context, state) => const SplashScreen(),
+      ),
+      GoRoute(
+        path: '/web-splash',
+        builder: (context, state) => const WebsiteSplashScreen(),
+      ),
+      GoRoute(
+        path: '/invite/:token',
+        builder: (context, state) {
+          final token = state.pathParameters['token']!;
+          if (kIsWeb) {
+            return WebsiteInviteScreen(inviteToken: token);
+          } else {
+            return NestInvitationScreen(inviteToken: token);
+          }
+        },
       ),
       GoRoute(
         path: '/onboarding',
@@ -115,11 +236,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         pageBuilder: (context, state) {
+          final autoRedirect = state.uri.queryParameters['autoRedirect'] == 'true';
           return CustomTransitionPage(
             key: state.pageKey,
             opaque: false,
             transitionDuration: const Duration(milliseconds: 1500),
-            child: const LoginScreen(),
+            child: LoginScreen(autoRedirectToWebsite: autoRedirect),
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
               return child;
             },
@@ -388,11 +510,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           final title = state.uri.queryParameters['title'] ?? 'Settlement';
           final amount = state.uri.queryParameters['amount'] ?? '\$0.00';
           final iconCode = int.tryParse(state.uri.queryParameters['icon'] ?? '0') ?? Icons.done_all_rounded.codePoint;
+          final groupId = state.uri.queryParameters['groupId'];
           
           return CustomTransitionPage(
             key: state.pageKey,
             child: SettlementDetailScreen(
               id: id,
+              groupId: groupId,
               title: title,
               amount: amount,
               iconCodePoint: iconCode,
@@ -569,6 +693,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/personal-ledger/add',
         builder: (context, state) => const AddLedgerTransactionScreen(),
+      ),
+      GoRoute(
+        path: '/personal-ledger/history',
+        builder: (context, state) => const LedgerHistoryScreen(),
       ),
       GoRoute(
         path: '/personal-ledger/detail/:id',

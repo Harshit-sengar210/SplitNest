@@ -8,7 +8,8 @@ import '../../../groups/presentation/providers/groups_provider.dart';
 import '../../../groups/domain/models/group.dart';
 import '../providers/expenses_provider.dart';
 import '../../domain/models/expense.dart';
-import '../../../../core/utils/mock_database.dart';
+import '../../../activity/data/services/notification_writer.dart';
+import '../../../../core/services/cloudinary_service.dart';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const _kPurple = Color(0xFF7B61FF);
@@ -111,7 +112,8 @@ class _ScanReceiptScreenState extends ConsumerState<ScanReceiptScreen>
       if (mounted) {
         _scannerController.stop();
         setState(() => _currentStep = 2);
-        MockDatabase().addNotification(
+        NotificationWriter.sendToUser(
+          targetUserId: 'user_me',
           title: 'Receipt Scanned',
           description:
               'Successfully extracted ₹${_totalAmount.toStringAsFixed(2)} from receipt.',
@@ -170,10 +172,20 @@ class _ScanReceiptScreenState extends ConsumerState<ScanReceiptScreen>
     }
     final total = _totalAmount;
     final splits = <ExpenseSplit>[];
+    final selectedMember = _selectedGroup!.members.firstWhere(
+        (m) => m.id == _paidByUserId,
+        orElse: () => _selectedGroup!.members.first);
+    final paidByName = selectedMember.id == 'user_me' ? 'You' : selectedMember.name;
+
+    String getMemberName(String id) {
+      final m = _selectedGroup!.members.firstWhere((m) => m.id == id, orElse: () => _selectedGroup!.members.first);
+      return m.id == 'user_me' ? 'You' : m.name;
+    }
+
     if (_splitMethod == 'Equal') {
       final share = total / _selectedMembersCount;
       _selectedMembers.forEach((memberId, isSelected) {
-        if (isSelected) splits.add(ExpenseSplit(userId: memberId, amount: share));
+        if (isSelected) splits.add(ExpenseSplit(userId: memberId, memberName: getMemberName(memberId), amount: share, paidBy: _paidByUserId, paidByName: paidByName));
       });
     } else {
       final sum = _customTotalSum;
@@ -190,12 +202,17 @@ class _ScanReceiptScreenState extends ConsumerState<ScanReceiptScreen>
           final amt = double.tryParse(
                   _customAmountsControllers[memberId]?.text ?? '0') ??
               0.0;
-          splits.add(ExpenseSplit(userId: memberId, amount: amt));
+          splits.add(ExpenseSplit(userId: memberId, memberName: getMemberName(memberId), amount: amt, paidBy: _paidByUserId, paidByName: paidByName));
         }
       });
     }
     setState(() => _isCreating = true);
     try {
+      String? uploadedUrl;
+      if (_selectedImagePath != null) {
+        uploadedUrl = await CloudinaryService.uploadImage(_selectedImagePath!);
+      }
+
       await ref
           .read(expensesProvider(_selectedGroup!.id).notifier)
           .createExpense(
@@ -206,6 +223,8 @@ class _ScanReceiptScreenState extends ConsumerState<ScanReceiptScreen>
             paidByUserId: _paidByUserId,
             splits: splits,
             splitMethod: _splitMethod,
+            paidByName: paidByName,
+            imageUrl: uploadedUrl,
           );
       if (mounted) _showSuccessDialog();
     } catch (e) {
